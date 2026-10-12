@@ -1,5 +1,7 @@
 # Metal Gear Solid: Reintegrated
 
+![Metal Gear Solid: Reintegrated — tactical banner](assets/branding/reintegrated-tactical.png)
+
 An experimental source port of PlayStation **Metal Gear Solid Integral**, derived
 from [RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral), FoxdieTeam recovered
 C, and PsyZ. This repository preserves RE:INTEGRAL history and its license notices.
