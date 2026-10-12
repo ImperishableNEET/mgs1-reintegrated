@@ -18,8 +18,10 @@ older save can restore the save's language/caption options.
 
 Settings and saves use %LOCALAPPDATA%/MGS-Reintegrated. Existing upstream
 RE-INTEGRAL profiles are left untouched. Back up saves before testing candidates.
-Alt+Enter toggles borderless windowed fullscreen; Ctrl+Alt+Enter selects exclusive
-fullscreen. Direct3D 11 is the current default presentation backend.
+Alt+Enter toggles borderless windowed fullscreen. Exclusive fullscreen is not
+available in the packaged SDL GPU backend; Ctrl+Alt+Enter reports this limitation.
+This Windows recovered-code candidate uses Direct3D 12. The earlier hybrid
+Direct3D 11 implementation is separate.
 
 Xbox Elite Series 2 and DualSense Edge, including hot swapping, were tested by
 the user on an earlier candidate. This package still needs physical-controller

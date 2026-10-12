@@ -24,5 +24,5 @@ For contributions, branch from the current upstream branch and cherry-pick only
 the focused change. Keep branding and unrelated experimental work out of PRs.
 Preserve licenses and credit; exclude local assets, private saves and binaries.
 
-At preparation time the local ancestry is retained, but GitHub fork creation and
-origin attachment are pending authenticated access.
+The GitHub fork exists at ImperishableNEET/mgs1-reintegrated. Origin is connected,
+reintegrated is published, and upstream history remains intact.
