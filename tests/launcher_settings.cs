@@ -37,6 +37,7 @@ internal static class LauncherSettingsTest
         var value = Settings.Load(path);
         Require(!value.Invulnerable && !value.BonusItems && !value.AutoCard, "Gameplay aids must default off");
         Require(!value.FastLoading, "Experimental fast loading must default off");
+        Require(value.CodecTurbo, "User launcher Codec turbo must default on");
         Require(!value.Scanlines, "Optional scanlines must default off");
         Require(value.Resolution == "640x480" && !value.Widescreen,
             "New profiles must default to the original display format");
@@ -51,6 +52,7 @@ internal static class LauncherSettingsTest
         value.Save(path);
         value.Fullscreen = true;
         value.Scanlines = true;
+        value.CodecTurbo = false;
         value.FastLoading = true;
         value.TextureCorrection = value.GeometryPrecision = value.DepthBuffer = true;
         value.Save(path);
@@ -60,6 +62,7 @@ internal static class LauncherSettingsTest
             "Settings round-trip or replacement failed");
         Require(restored.TextureCorrection && restored.GeometryPrecision && restored.DepthBuffer,
             "Graphics settings did not round-trip");
+        Require(!restored.CodecTurbo, "Codec turbo opt-out did not persist");
         Require(restored.FastLoading, "Fast loading setting did not round-trip");
         Require(restored.TextPack == value.TextPack && restored.VoicePack == value.VoicePack,
             "Language selections did not round-trip");

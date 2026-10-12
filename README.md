@@ -36,7 +36,9 @@ A Disc 2 path can be supplied with `-DiscTwo`. No private postboss save is bundl
 Optional scanlines and cosmetic title branding affect presentation. Scanlines
 remain under visual review. Xbox Elite Series 2 and DualSense Edge were manually
 checked in an earlier candidate, including hot swapping; that is not a guarantee
-for every connection mode. Codec turbo is opt-in with `-CodecTurbo`.
+for every connection mode. Hold Triangle for Codec dialogue turbo, enabled by default in user launchers.
+Disable it in the GUI Gameplay tab or use `-CodecTurbo:$false` with Play.ps1.
+Direct engine/validation launches retain original behavior without the option.
 
 ## Local assets and provenance
 

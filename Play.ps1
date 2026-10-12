@@ -4,7 +4,7 @@ param(
     [string]$Executable,
     [string]$Resolution = '640x480',
     [switch]$Scanlines,
-    [switch]$CodecTurbo
+    [switch]$CodecTurbo = $true
 )
 $ErrorActionPreference = 'Stop'
 $localRoot = Join-Path $env:LOCALAPPDATA 'MGS-Reintegrated'

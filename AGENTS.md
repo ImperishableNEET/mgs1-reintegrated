@@ -3,7 +3,8 @@
 Read README.md, docs/REINTEGRATED_STATUS.md and sources.lock.json first.
 Current runtime: recovered C, Windows i686; full x86-64/ARM64 remains unproven.
 Preserve original game behavior by default. Presentation/QoL preferences are
-launcher opt-ins and must remain absent from validation commands.
+launcher preferences and must remain absent from validation commands.
+User launchers default Triangle Codec turbo on, with an explicit opt-out.
 
 Prefer one bounded implementation, shortest relevant check, then a concise result.
 Reproduce defects before changing semantics. After two attempts without measurable

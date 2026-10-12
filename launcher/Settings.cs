@@ -17,6 +17,7 @@ namespace ReIntegral
         public bool Widescreen;
         public bool Fullscreen;
         public bool Scanlines;
+        public bool CodecTurbo = true;
         public bool TextureCorrection;
         public bool GeometryPrecision;
         public bool DepthBuffer;

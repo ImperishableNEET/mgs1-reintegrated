@@ -13,7 +13,9 @@ shortcuts ask for Disc 1 on first use; Play.ps1 also accepts -DiscTwo. The GUI
 does not require PowerShell. The shortcuts use Windows PowerShell.
 
 New profiles default to original aspect and 640x480 output, English captions,
-and cosmetic Reintegrated title branding. Scanlines are optional. Loading an
+and cosmetic Reintegrated title branding. Scanlines are optional. Hold Triangle
+for Codec dialogue turbo (default on); disable it in Gameplay or launch Play.ps1
+with -CodecTurbo:$false. Cutscene behavior is unchanged. Loading an
 older save can restore the save's language/caption options.
 
 Settings and saves use %LOCALAPPDATA%/MGS-Reintegrated. Existing upstream

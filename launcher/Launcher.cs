@@ -14,7 +14,7 @@ namespace ReIntegral
         private readonly TextBox discOne = new TextBox(), discTwo = new TextBox();
         private readonly TextBox textPack = new TextBox(), voicePack = new TextBox();
         private readonly ComboBox resolution = new ComboBox(), mantis = new ComboBox();
-        private readonly CheckBox wide = new CheckBox(), fullscreen = new CheckBox(), scanlines = new CheckBox();
+        private readonly CheckBox wide = new CheckBox(), fullscreen = new CheckBox(), scanlines = new CheckBox(), codecTurbo = new CheckBox();
         private readonly CheckBox textureCorrection = new CheckBox();
         private readonly CheckBox geometryPrecision = new CheckBox(), depthBuffer = new CheckBox();
         private readonly CheckBox bonus = new CheckBox(), invulnerable = new CheckBox();
@@ -164,7 +164,8 @@ namespace ReIntegral
             mantis.Items.AddRange(new object[] { "off", "random" });
             page.Controls.Add(mantis);
             LabelAt(page, "Controller-port swap: F2 or press both sticks (L3 + R3).", 260);
-            LabelAt(page, "Bonus items persist in ordinary saves. Other options apply to this launch.", 295);
+            CheckAt(page, codecTurbo, "Hold Triangle to fast-forward Codec dialogue", 295);
+            LabelAt(page, "Bonus items persist in ordinary saves. Other options apply to this launch.", 329);
         }
 
         private void BuildAdvanced()
@@ -226,7 +227,7 @@ namespace ReIntegral
             discOne.Text = value.DiscOne; discTwo.Text = value.DiscTwo;
             textPack.Text = value.TextPack; voicePack.Text = value.VoicePack;
             resolution.Text = value.Resolution; wide.Checked = value.Widescreen;
-            fullscreen.Checked = value.Fullscreen; scanlines.Checked = value.Scanlines; bonus.Checked = value.BonusItems;
+            fullscreen.Checked = value.Fullscreen; scanlines.Checked = value.Scanlines; codecTurbo.Checked = value.CodecTurbo; bonus.Checked = value.BonusItems;
             textureCorrection.Checked = value.TextureCorrection;
             geometryPrecision.Checked = value.GeometryPrecision;
             depthBuffer.Checked = value.DepthBuffer;
@@ -241,7 +242,7 @@ namespace ReIntegral
             return new Settings { DiscOne = AbsolutePath(discOne.Text), DiscTwo = AbsolutePath(discTwo.Text),
                 TextPack = AbsolutePath(textPack.Text), VoicePack = AbsolutePath(voicePack.Text),
                 Resolution = resolution.Text.Trim(), Widescreen = wide.Checked, Fullscreen = fullscreen.Checked,
-                Scanlines = scanlines.Checked,
+                Scanlines = scanlines.Checked, CodecTurbo = codecTurbo.Checked,
                 TextureCorrection = textureCorrection.Checked,
                 GeometryPrecision = geometryPrecision.Checked, DepthBuffer = depthBuffer.Checked,
                 BonusItems = bonus.Checked, Invulnerable = invulnerable.Checked, AutoCard = autoCard.Checked,
@@ -306,6 +307,7 @@ namespace ReIntegral
             startInfo.EnvironmentVariables["REI_ORIGINAL_RES"] = "1";
             startInfo.EnvironmentVariables["REI_REINTEGRATED_TITLE"] = "1";
             startInfo.EnvironmentVariables["REI_SCANLINES"] = scanlines.Checked ? "1" : "0";
+            startInfo.EnvironmentVariables["REI_CODEC_TURBO"] = codecTurbo.Checked ? "1" : "0";
             game = new Process { StartInfo = startInfo };
             game.OutputDataReceived += WriteLog;
             game.ErrorDataReceived += WriteLog;
