@@ -1,9 +1,10 @@
 # Metal Gear Solid: Reintegrated
 
-![Metal Gear Solid: Reintegrated � tactical banner](assets/branding/reintegrated-tactical.png)
+![Metal Gear Solid: Reintegrated — tactical banner](assets/branding/reintegrated-tactical.png)
 
-An experimental source port of PlayStation **Metal Gear Solid Integral**, derived
-from [RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral), FoxdieTeam recovered
+An experimental fork of [RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral)
+focused on portability and optional enhancements for PlayStation **Metal Gear Solid Integral**.
+It builds on RE:INTEGRAL, FoxdieTeam recovered
 C, and PsyZ. This repository preserves RE:INTEGRAL history and its license notices.
 
 The current playable recovered-code runtime targets **Windows x86 (32-bit)**.
@@ -41,7 +42,7 @@ extractor. Imported content is for tools; the runtime currently still reads CUE/
 Do not mistake extracted content support for a directory-backed runtime.
 
 [Checkpoint and limitations](docs/REINTEGRATED_STATUS.md) ·
-[Third-party notices](docs/THIRD_PARTY.md) · [License scope](LICENSE)
+[Fork workflow](docs/FORK_WORKFLOW.md) · [Third-party notices](docs/THIRD_PARTY.md) · [License scope](LICENSE)
 
 Upstream records remain historical upstream evidence. They must not be read as
 independent Reintegrated verification. Small native fixes are intended to remain
