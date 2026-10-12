@@ -1,0 +1,172 @@
+diff --git a/psyz/src/platform/sdl3_common.h b/psyz/src/platform/sdl3_common.h
+index 3144968..1a5d5df 100644
+--- a/psyz/src/platform/sdl3_common.h
++++ b/psyz/src/platform/sdl3_common.h
+@@ -725,6 +725,13 @@ static unsigned int PadRead_Gamepad(struct Gamepad* g) {
+         return 0;
+     }
+     unsigned int r = 0;
++    /* Convert the left stick to original digital directions; do not change game simulation. */
++    Sint16 lx = SDL_GetGamepadAxis(g->dev, SDL_GAMEPAD_AXIS_LEFTX);
++    Sint16 ly = SDL_GetGamepadAxis(g->dev, SDL_GAMEPAD_AXIS_LEFTY);
++    if (lx < -16000) r |= PADLleft;
++    if (lx > 16000) r |= PADLright;
++    if (ly < -16000) r |= PADLup;
++    if (ly > 16000) r |= PADLdown;
+     if (SDL_GetGamepadButton(g->dev, SDL_GAMEPAD_BUTTON_NORTH)) {
+         r |= PADRup;
+     }
+@@ -902,49 +909,63 @@ void Psyz_PadsPoll(void) {
+ }
+ 
+ #ifndef PLATFORM_IOS
+-// Prefers exclusive fullscreen mode, fallback on borderless fullscreen
++// Monitor-sized borderless WINDOWED presentation. Do not enter SDL fullscreen:
++// that still triggers native fullscreen/swapchain transitions on some systems.
+ static void SetFullScreen(bool isFullscreen) {
++    static SDL_Rect saved_bounds;
++    static SDL_WindowFlags saved_flags;
+     if (!sdl3_window) {
+         return;
+     }
+     if (is_fullscreen == isFullscreen) {
+         return;
+     }
+-    is_fullscreen = isFullscreen;
+-    if (is_fullscreen) {
+-        SDL_DisplayID display_id = SDL_GetDisplayForWindow(sdl3_window);
+-        if (!display_id) {
+-            display_id = SDL_GetPrimaryDisplay();
+-        }
+-        SDL_DisplayMode* mode = NULL;
+-        SDL_DisplayMode closest;
+-        const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display_id);
+-        if (desktop) {
+-            if (SDL_GetClosestFullscreenDisplayMode(
+-                    display_id, desktop->w, desktop->h, desktop->refresh_rate,
+-                    false, &closest)) {
+-                mode = &closest;
+-            }
++    if (isFullscreen) {
++        SDL_Rect monitor;
++        SDL_DisplayID display = SDL_GetDisplayForWindow(sdl3_window);
++        if (!display || !SDL_GetDisplayBounds(display, &monitor)) {
++            WARNF("failed to query monitor bounds: %s", SDL_GetError());
++            return;
+         }
+-        SDL_SetWindowFullscreenMode(sdl3_window, mode);
+-        if (!SDL_SetWindowFullscreen(sdl3_window, true)) {
+-            WARNF("failed to enter fullscreen: %s", SDL_GetError());
+-            is_fullscreen = false;
++        saved_flags = SDL_GetWindowFlags(sdl3_window);
++        if (saved_flags & SDL_WINDOW_FULLSCREEN) {
++            WARNF("borderless windowed transition refused: window already in SDL fullscreen");
+             return;
+         }
+-        INFOF(
+-            "entered %s fullscreen", mode ? "exclusive" : "borderless desktop");
+-    } else {
+-        if (!SDL_SetWindowFullscreen(sdl3_window, false)) {
+-            WARNF("failed to leave fullscreen: %s", SDL_GetError());
+-            is_fullscreen = true;
++        if (saved_flags & SDL_WINDOW_MAXIMIZED) {
++            SDL_RestoreWindow(sdl3_window);
++            SDL_SyncWindow(sdl3_window);
++        }
++        SDL_GetWindowPosition(sdl3_window, &saved_bounds.x, &saved_bounds.y);
++        SDL_GetWindowSize(sdl3_window, &saved_bounds.w, &saved_bounds.h);
++        is_fullscreen = true;
++        if (!SDL_SetWindowBordered(sdl3_window, false) ||
++            !SDL_SetWindowResizable(sdl3_window, false) ||
++            !SDL_SetWindowPosition(sdl3_window, monitor.x, monitor.y) ||
++            !SDL_SetWindowSize(sdl3_window, monitor.w, monitor.h)) {
++            WARNF("failed borderless windowed transition: %s", SDL_GetError());
++            SetFullScreen(false);
+             return;
+         }
++        INFOF("entered monitor-sized borderless windowed mode");
++    } else {
++        SDL_SetWindowBordered(sdl3_window, !(saved_flags & SDL_WINDOW_BORDERLESS));
++        SDL_SetWindowResizable(sdl3_window, !!(saved_flags & SDL_WINDOW_RESIZABLE));
++        SDL_SetWindowPosition(sdl3_window, saved_bounds.x, saved_bounds.y);
++        SDL_SetWindowSize(sdl3_window, saved_bounds.w, saved_bounds.h);
++        if (saved_flags & SDL_WINDOW_MAXIMIZED) SDL_MaximizeWindow(sdl3_window);
++        is_fullscreen = false;
+         INFOF("returned to windowed mode");
+     }
+     SDL_SyncWindow(sdl3_window);
+     SDL_GetWindowSizeInPixels(
+         sdl3_window, &wnd_size_in_pixels.w, &wnd_size_in_pixels.h);
++    int x, y, w, h;
++    SDL_GetWindowPosition(sdl3_window, &x, &y);
++    SDL_GetWindowSize(sdl3_window, &w, &h);
++    INFOF("window presentation bounds %d,%d %dx%d borderless_active=%d SDL_FULLSCREEN=%d",
++        x, y, w, h, is_fullscreen,
++        !!(SDL_GetWindowFlags(sdl3_window) & SDL_WINDOW_FULLSCREEN));
+ }
+ 
+ static void ApplyRequestedFullscreen(void) {
+@@ -957,6 +978,45 @@ static void ApplyRequestedFullscreen(void) {
+ #endif
+ 
+ static void PollEvents(void) {
++#ifndef PLATFORM_IOS
++    // Opt-in candidate smoke: exercise the actual shortcut event route without
++    // sending global keyboard input or choosing a display mode.
++    static int window_smoke_tick;
++    static bool window_smoke_enabled, window_smoke_checked;
++    static int smoke_x, smoke_y, smoke_w, smoke_h;
++    if (!window_smoke_checked && sdl3_window) {
++        const char* smoke = SDL_getenv("REI_WINDOW_SMOKE");
++        window_smoke_enabled = smoke && strcmp(smoke, "1") == 0 && !is_fullscreen;
++        window_smoke_checked = true;
++        SDL_GetWindowPosition(sdl3_window, &smoke_x, &smoke_y);
++        SDL_GetWindowSize(sdl3_window, &smoke_w, &smoke_h);
++        if (window_smoke_enabled) INFOF("window smoke initial bounds %d,%d %dx%d", smoke_x, smoke_y, smoke_w, smoke_h);
++    }
++    if (window_smoke_enabled) {
++        ++window_smoke_tick;
++        if (window_smoke_tick == 30 || window_smoke_tick == 90 || window_smoke_tick == 100) {
++            SDL_Event shortcut = {0};
++            shortcut.type = SDL_EVENT_KEY_DOWN;
++            shortcut.key.windowID = SDL_GetWindowID(sdl3_window);
++            shortcut.key.scancode = SDL_SCANCODE_RETURN;
++            shortcut.key.mod = SDL_KMOD_ALT | (window_smoke_tick == 100 ? SDL_KMOD_CTRL : 0);
++            SDL_PushEvent(&shortcut);
++        }
++        if (window_smoke_tick == 120) SDL_SetWindowSize(sdl3_window, 960, 720);
++        if (window_smoke_tick == 180) {
++            SDL_SetWindowSize(sdl3_window, smoke_w, smoke_h);
++            SDL_SetWindowPosition(sdl3_window, smoke_x, smoke_y);
++            SDL_SyncWindow(sdl3_window);
++            int x, y, w, h;
++            SDL_GetWindowPosition(sdl3_window, &x, &y);
++            SDL_GetWindowSize(sdl3_window, &w, &h);
++            INFOF("window smoke restored bounds %d,%d %dx%d fullscreen=%d exclusive_mode=%d", x, y, w, h,
++                !!(SDL_GetWindowFlags(sdl3_window) & SDL_WINDOW_FULLSCREEN),
++                SDL_GetWindowFullscreenMode(sdl3_window) != NULL);
++            window_smoke_enabled = false;
++        }
++    }
++#endif
+     SDL_Event event;
+     while (SDL_PollEvent(&event)) {
+         if (overlay_event_cb) {
+@@ -996,6 +1056,17 @@ static void PollEvents(void) {
+             if (event.key.scancode == SDL_SCANCODE_F4 && !event.key.repeat) {
+                 SetFullScreen(!is_fullscreen);
+             }
++            if (event.key.scancode == SDL_SCANCODE_RETURN &&
++                (event.key.mod & SDL_KMOD_ALT) && !event.key.repeat) {
++                if (event.key.mod & SDL_KMOD_CTRL) {
++                    // SDL GPU does not expose its native swapchain for a safe
++                    // DXGI exclusive transition. Selecting an SDL display mode
++                    // alone would change the desktop without proving exclusive.
++                    WARNF("exclusive fullscreen unavailable in this backend; use Alt+Enter for borderless windowed mode");
++                } else {
++                    SetFullScreen(!is_fullscreen);
++                }
++            }
+             break;
+ #endif
+         default:

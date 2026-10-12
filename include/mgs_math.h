@@ -1,6 +1,7 @@
 #ifndef MGS_MATH_H
 #define MGS_MATH_H
+#include <stdint.h>
 
-long MgsSquareRoot0(long value);
+int32_t MgsSquareRoot0(int32_t value);
 
 #endif

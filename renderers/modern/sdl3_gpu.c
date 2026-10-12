@@ -16,6 +16,9 @@
 #include "sdl3_common.h"
 #include "sdl3_draw.h"
 #include "sdl3_gpu_debug.h"
+#include "reintegrated_title_rects.h"
+extern int ReiReintegratedTitleVisible;
+#define PRESENTATION_VERTEX_CAPACITY ((3 * VRAM_H + sizeof(rei_title_rects) / sizeof(rei_title_rects[0])) * 6)
 
 #if defined(_WIN32)
 #include "shaders/psx_vert_dxil.h"
@@ -116,6 +119,11 @@ static SDL_GPUGraphicsPipeline *pipe_depth_write, *pipe_depth_read;
 static bool force_mask_bit;
 static bool preserve_masked;
 static SDL_GPUGraphicsPipeline* pipe_clear = NULL;
+static SDL_GPUGraphicsPipeline* pipe_presentation = NULL;
+static SDL_GPUBuffer* presentation_vbuf = NULL;
+static SDL_GPUTransferBuffer* presentation_transfer = NULL;
+static bool presentation_scanlines;
+static bool presentation_title;
 static SDL_GPUCommandBuffer* pending_cmd = NULL;
 #include "depth_target.h"
 
@@ -304,7 +312,7 @@ static SDL_GPUGraphicsPipeline* CreatePsxPipeline(
 
 // used only for a fast hardware ClearImage
 static SDL_GPUGraphicsPipeline* CreateClearPipeline(
-    SDL_GPUShader* vs, SDL_GPUShader* fs) {
+    SDL_GPUShader* vs, SDL_GPUShader* fs, bool presentation) {
     const SDL_GPUVertexBufferDescription vb_desc = {
         .slot = 0,
         .pitch = sizeof(Vertex),
@@ -323,7 +331,17 @@ static SDL_GPUGraphicsPipeline* CreateClearPipeline(
     // blending disabled: the clear color (including alpha 0, the PS1 mask
     // bit) is written as-is, matching glClearColor(r, g, b, 0) + glClear
     const SDL_GPUColorTargetDescription target = {
-        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .format = presentation ? SDL_GetGPUSwapchainTextureFormat(device, sdl3_window)
+                               : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .blend_state = {
+            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .color_blend_op = SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
+            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+            .enable_blend = presentation,
+        },
     };
     const SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vs,
@@ -335,7 +353,8 @@ static SDL_GPUGraphicsPipeline* CreateClearPipeline(
                 .vertex_attributes = attribs,
                 .num_vertex_attributes = LENU(attribs),
             },
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLESTRIP,
+        .primitive_type = presentation ? SDL_GPU_PRIMITIVETYPE_TRIANGLELIST
+                                       : SDL_GPU_PRIMITIVETYPE_TRIANGLESTRIP,
         .target_info =
             {
                 .color_target_descriptions = &target,
@@ -443,7 +462,29 @@ static bool CreateGpuResources(void) {
         pipe_tri = CreatePsxPipeline(psx_vs, psx_fs, 0);
         pipe_depth_write = CreatePsxPipeline(psx_vs, psx_fs, 1);
         pipe_depth_read = CreatePsxPipeline(psx_vs, psx_fs, 2);
-        pipe_clear = CreateClearPipeline(clear_vs, clear_fs);
+        pipe_clear = CreateClearPipeline(clear_vs, clear_fs, false);
+        const char* scanlines = SDL_getenv("REI_SCANLINES");
+        presentation_scanlines = scanlines && strcmp(scanlines, "1") == 0;
+        const char* title = SDL_getenv("REI_REINTEGRATED_TITLE");
+        presentation_title = title && strcmp(title, "1") == 0;
+        if (swapchain_ok && (presentation_scanlines || presentation_title)) {
+            pipe_presentation = CreateClearPipeline(clear_vs, clear_fs, true);
+            const SDL_GPUBufferCreateInfo vertices = {
+                .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+                .size = PRESENTATION_VERTEX_CAPACITY * sizeof(Vertex),
+            };
+            const SDL_GPUTransferBufferCreateInfo transfer = {
+                .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+                .size = vertices.size,
+            };
+            presentation_vbuf = SDL_CreateGPUBuffer(device, &vertices);
+            presentation_transfer = SDL_CreateGPUTransferBuffer(device, &transfer);
+            if (!pipe_presentation || !presentation_vbuf || !presentation_transfer) {
+                WARNF("optional presentation effects unavailable: %s", SDL_GetError());
+                presentation_scanlines = false;
+                presentation_title = false;
+            }
+        }
     }
     if (psx_vs) {
         SDL_ReleaseGPUShader(device, psx_vs);
@@ -495,7 +536,7 @@ bool InitPlatform() {
         SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #endif
     sdl3_window = SDL_CreateWindow(
-        window_title, requested_window_size.w, requested_window_size.h, window_flags);
+        "Metal Gear Solid: Reintegrated", requested_window_size.w, requested_window_size.h, window_flags);
     if (!sdl3_window) {
         ERRORF("SDL_CreateWindow: %s", SDL_GetError());
         return false;
@@ -634,7 +675,7 @@ static void SyncNativeVramToScaled(int x, int y, int w, int h) {
                         .w = (Uint32)(w * internal_res),
                         .h = (Uint32)(h * internal_res)},
         .load_op = SDL_GPU_LOADOP_LOAD,
-        .filter = SDL_GPU_FILTER_NEAREST,
+        .filter = presentation_width ? SDL_GPU_FILTER_LINEAR : SDL_GPU_FILTER_NEAREST,
     };
     SDL_BlitGPUTexture(cmd, &blit);
     MarkScaledVramDirty((SDL_Rect){x, y, w, h});
@@ -667,7 +708,7 @@ static void SyncScaledVramToNative(SDL_Rect dirty) {
                         .w = (Uint32)(x1 - x0),
                         .h = (Uint32)(y1 - y0)},
         .load_op = SDL_GPU_LOADOP_LOAD,
-        .filter = SDL_GPU_FILTER_NEAREST,
+        .filter = presentation_width ? SDL_GPU_FILTER_LINEAR : SDL_GPU_FILTER_NEAREST,
     };
     SDL_BlitGPUTexture(cmd, &blit);
     MarkVramDirty((SDL_Rect){x0, y0, x1 - x0, y1 - y0});
@@ -799,7 +840,7 @@ static void ApplyPendingInternalRes(void) {
                                 .w = VRAM_W * n,
                                 .h = VRAM_H * n},
                 .load_op = SDL_GPU_LOADOP_DONT_CARE,
-                .filter = SDL_GPU_FILTER_NEAREST,
+                .filter = presentation_width ? SDL_GPU_FILTER_LINEAR : SDL_GPU_FILTER_NEAREST,
             };
             SDL_BlitGPUTexture(cmd, &blit);
         }
@@ -810,6 +851,115 @@ static void ApplyPendingInternalRes(void) {
     internal_res = n;
     UpdateScissor();
     INFOF("internal resolution set to %dx (%dx%d)", n, VRAM_W * n, VRAM_H * n);
+}
+
+// Existing clear shaders map signed-short vertices against a 1024x512 grid.
+// A viewport scaled by that grid/source size keeps integer source coordinates
+// exact at any output size, including fractional scaling and letterboxing.
+static void PresentationRect(Vertex* out, int x, int y, int w, int h,
+                             u8 r, u8 g, u8 b, u8 a) {
+    const int xs[6] = {x, x + w, x, x, x + w, x + w};
+    const int ys[6] = {y, y, y + h, y + h, y, y + h};
+    for (int i = 0; i < 6; ++i) {
+        out[i] = (Vertex){0};
+        out[i].x = (short)xs[i];
+        out[i].y = (short)ys[i];
+        out[i].r = r; out[i].g = g; out[i].b = b; out[i].a = a;
+    }
+}
+
+static void DrawPresentationRects(SDL_GPUCommandBuffer* cmd,
+    SDL_GPUTexture* target_texture, const SDL_Rect* dst,
+    const Vertex* vertices, unsigned count, int source_w, int source_h, const SDL_Rect* clips) {
+    if (!count || dst->w <= 0 || dst->h <= 0 || source_w <= 0 || source_h <= 0) return;
+    void* mapped = SDL_MapGPUTransferBuffer(device, presentation_transfer, true);
+    if (!mapped) {
+        WARNF("presentation upload unavailable: %s", SDL_GetError());
+        return;
+    }
+    memcpy(mapped, vertices, count * sizeof(Vertex));
+    SDL_UnmapGPUTransferBuffer(device, presentation_transfer);
+    SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(cmd);
+    const SDL_GPUTransferBufferLocation src = {.transfer_buffer = presentation_transfer};
+    const SDL_GPUBufferRegion region = {.buffer = presentation_vbuf, .size = count * sizeof(Vertex)};
+    SDL_UploadToGPUBuffer(copy, &src, &region, true);
+    SDL_EndGPUCopyPass(copy);
+    const SDL_GPUColorTargetInfo target = {
+        .texture = target_texture, .load_op = SDL_GPU_LOADOP_LOAD,
+        .store_op = SDL_GPU_STOREOP_STORE,
+    };
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &target, 1, NULL);
+    const SDL_GPUViewport viewport = {
+        .x = (float)dst->x, .y = (float)dst->y,
+        .w = (float)dst->w * 1024.0f / source_w,
+        .h = (float)dst->h * 512.0f / source_h,
+        .min_depth = 0.0f, .max_depth = 1.0f,
+    };
+    SDL_SetGPUViewport(pass, &viewport);
+    SDL_SetGPUScissor(pass, dst);
+    SDL_BindGPUGraphicsPipeline(pass, pipe_presentation);
+    const SDL_GPUBufferBinding binding = {.buffer = presentation_vbuf};
+    SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+    if (clips) {
+        for (unsigned i = 0; i < count / 6; ++i) {
+            SDL_SetGPUScissor(pass, clips + i);
+            SDL_DrawGPUPrimitives(pass, 6, 1, i * 6, 0);
+        }
+    } else {
+        SDL_DrawGPUPrimitives(pass, count, 1, 0, 0);
+    }
+    SDL_EndGPURenderPass(pass);
+}
+
+static void DrawPresentationEffects(SDL_GPUCommandBuffer* cmd,
+    SDL_GPUTexture* target, const SDL_Rect* dst, int source_w, int source_h) {
+    if ((!presentation_title && !presentation_scanlines) || debug_show_vram) return;
+    static Vertex vertices[PRESENTATION_VERTEX_CAPACITY];
+    static SDL_Rect clips[3 * VRAM_H];
+    unsigned count = 0;
+    if (presentation_title && ReiReintegratedTitleVisible) {
+        for (unsigned i = 0; i < sizeof(rei_title_rects) / sizeof(rei_title_rects[0]); ++i) {
+            PresentationRect(vertices + count, rei_title_rects[i].x, rei_title_rects[i].y,
+                rei_title_rects[i].w, rei_title_rects[i].h,
+                rei_title_rects[i].r, rei_title_rects[i].g, rei_title_rects[i].b, 255);
+            count += 6;
+        }
+        DrawPresentationRects(cmd, target, dst, vertices, count, 320, 224, NULL);
+    }
+    if (presentation_scanlines && source_h <= VRAM_H) {
+        count = 0;
+        // Source-row anchored half-row bands, with output-pixel coverage at
+        // fractional edges. Only the overlay is softened, never the game image.
+        const double scale = (double)dst->h / source_h;
+        const int stride = scale < 2.0 ? 2 : 1;
+        for (int row = 0; row < source_h; row += stride) {
+            const double top = (row + 0.5) * scale;
+            const double bottom = (row + 1.0) * scale;
+            const int first = (int)floor(top);
+            const int last = (int)ceil(bottom) - 1;
+            if (first == last) {
+                clips[count / 6] = (SDL_Rect){dst->x, dst->y + first, dst->w, 1};
+                PresentationRect(vertices + count, 0, 0, 1024, 512,
+                    0, 0, 0, (Uint8)lround(64.0 * (bottom - top)));
+                count += 6;
+            } else {
+                clips[count / 6] = (SDL_Rect){dst->x, dst->y + first, dst->w, 1};
+                PresentationRect(vertices + count, 0, 0, 1024, 512,
+                    0, 0, 0, (Uint8)lround(64.0 * (first + 1 - top)));
+                count += 6;
+                if (last > first + 1) {
+                    clips[count / 6] = (SDL_Rect){dst->x, dst->y + first + 1, dst->w, last - first - 1};
+                    PresentationRect(vertices + count, 0, 0, 1024, 512, 0, 0, 0, 64);
+                    count += 6;
+                }
+                clips[count / 6] = (SDL_Rect){dst->x, dst->y + last, dst->w, 1};
+                PresentationRect(vertices + count, 0, 0, 1024, 512,
+                    0, 0, 0, (Uint8)lround(64.0 * (bottom - last)));
+                count += 6;
+            }
+        }
+        DrawPresentationRects(cmd, target, dst, vertices, count, 1024, 512, clips);
+    }
 }
 
 static void PlatformBackend_Present(void) {
@@ -884,6 +1034,8 @@ static void PlatformBackend_Present(void) {
                     .filter = presentation_width ? SDL_GPU_FILTER_LINEAR : SDL_GPU_FILTER_NEAREST,
                 };
                 SDL_BlitGPUTexture(cmd, &blit);
+                DrawPresentationEffects(cmd, swapchain, &dst,
+                    display_size.x, (int)(src.h / n));
             }
             if (overlay_frame_cb) {
                 overlay_frame_cb();
@@ -919,6 +1071,18 @@ static void QuitPlatform(void) {
     }
     if (device) {
         SDL_WaitForGPUIdle(device);
+        if (pipe_presentation) {
+            SDL_ReleaseGPUGraphicsPipeline(device, pipe_presentation);
+            pipe_presentation = NULL;
+        }
+        if (presentation_vbuf) {
+            SDL_ReleaseGPUBuffer(device, presentation_vbuf);
+            presentation_vbuf = NULL;
+        }
+        if (presentation_transfer) {
+            SDL_ReleaseGPUTransferBuffer(device, presentation_transfer);
+            presentation_transfer = NULL;
+        }
         ReleaseGeometryDepth();
         if (pipe_depth_write) SDL_ReleaseGPUGraphicsPipeline(device, pipe_depth_write);
         if (pipe_depth_read) SDL_ReleaseGPUGraphicsPipeline(device, pipe_depth_read);

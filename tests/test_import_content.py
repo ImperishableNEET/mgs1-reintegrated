@@ -160,6 +160,22 @@ class DiscTests(unittest.TestCase):
 
 
 class ImportTests(unittest.TestCase):
+    def test_single_disc_import(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'source'
+            source.mkdir()
+            _, digest = write_fixture(source, 'SLPM_862.47')
+            with patch.dict(importer.EDITIONS, {'SLPM_862.47': ('disc1', digest)}), redirect_stdout(io.StringIO()):
+                result = importer.import_content(source, root / 'content')
+            self.assertEqual(len(result['discs']), 1)
+            self.assertTrue(result['complete'])
+
+    def test_empty_source_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ValueError, 'at least one'):
+                importer.plan_import(Path(temporary))
+
     def test_cue_cannot_escape_or_hide_multiple_tracks(self):
         with tempfile.TemporaryDirectory() as temporary:
             cue = Path(temporary) / "disc.cue"

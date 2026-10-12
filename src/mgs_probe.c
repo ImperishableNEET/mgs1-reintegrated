@@ -1,4 +1,5 @@
 #include <SDL3/SDL.h>
+#include <stdlib.h>
 #include <psyz/video.h>
 #include <psyz/input.h>
 #include "mgs_native.h"
@@ -173,8 +174,14 @@ int MgsProbeInit(const char *mode)
 
 static int SetButtons(unsigned short buttons, int direction)
 {
-    if (!SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFTX, 0) ||
-        !SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFTY, 0) ||
+    extern int ReiReintegratedTitleVisible;
+    if (getenv("REI_TITLE_HOLD") && ReiReintegratedTitleVisible) { buttons = 0; direction = -1; }
+    const char *stick_option = getenv("REI_PROBE_STICK");
+    int stick = stick_option && strcmp(stick_option, "1") == 0;
+    int stick_x = stick && direction == 1 ? 32767 : stick && direction == 3 ? -32767 : 0;
+    int stick_y = stick && direction == 2 ? 32767 : stick && direction == 0 ? -32767 : 0;
+    if (!SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFTX, stick_x) ||
+        !SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFTY, stick_y) ||
         !SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
                                    buttons & PAD_L2 ? 32767 : -32768) ||
         !SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
@@ -192,7 +199,7 @@ static int SetButtons(unsigned short buttons, int direction)
     }
     for (unsigned i = 0; i < sizeof(directions) / sizeof(directions[0]); ++i) {
         if (!SDL_SetJoystickVirtualButton(controller, directions[i],
-                                          (int)i == direction || (buttons & direction_masks[i]) != 0)) {
+                                          !stick && ((int)i == direction || (buttons & direction_masks[i]) != 0))) {
             return 0;
         }
     }
@@ -316,9 +323,19 @@ static int WaitForPlayer(void)
         return SetButtons(frame % 60 < 8 ? PAD_CIRCLE : 0, -1);
     }
     if ((new_game_mode || load_mode) && strcmp(GM_GetArea(0), "title") == 0)
-        return SetButtons(frame % 60 < 8 ? PAD_START | PAD_CIRCLE : 0, -1);
+        return SetButtons(frame % 60 < 8 ?
+                          (getenv("REI_TITLE_PREVIEW") ? PAD_START : PAD_START | PAD_CIRCLE) : 0, -1);
     if (Work.field_2A_state == MENU_CODEC_OPEN) {
         codec_seen = 1;
+        if (getenv("REI_PROBE_CODEC_TURBO") &&
+            (Work.field_210_codec_state == 3 || Work.field_210_codec_state == 4 ||
+             Work.field_210_codec_state == 5)) {
+            int held = !getenv("REI_PROBE_CODEC_RELEASE") || frame % 160 < 80;
+            if (getenv("REI_PROBE_CODEC_RELEASE"))
+                printf("[codec-input] frame=%d time=%d held=%d state=%d\n",
+                       frame, GV_Time, held, Work.field_210_codec_state);
+            return SetButtons(held ? PAD_TRIANGLE : 0, -1);
+        }
         return SetButtons(frame % 24 < 8 ? PAD_CROSS : 0, -1);
     }
     if (GM_GameStatus & STATE_DEMO)

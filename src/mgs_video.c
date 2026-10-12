@@ -11,6 +11,7 @@
 #endif
 
 enum { VIDEO_COMMAND = 0xf3, FRAME_WIDTH = 320, FRAME_HEIGHT = 224 };
+int ReiReintegratedTitleVisible;
 static unsigned view_numerator = 1, view_denominator = 1;
 static int widescreen, frame_active, frame_centre, capture_output, movie_active;
 static int codec_active, menu_stage;
@@ -106,6 +107,8 @@ int MgsVideoConfigure(const MgsVideoOptions *options)
     unsigned scale_x = (width + FRAME_WIDTH - 1) / FRAME_WIDTH;
     unsigned scale_y = (height + source_height - 1) / source_height;
     unsigned scale = scale_x > scale_y ? scale_x : scale_y;
+    const char *original_res = getenv("REI_ORIGINAL_RES");
+    if (original_res && strcmp(original_res, "1") == 0) scale = 1;
     if (scale > PSYZ_INTERNAL_RES_MAX) {
         fprintf(stderr, "Resolution %ux%u requires %ux rendering; this renderer supports up to %ux.\n",
                 width, height, scale, PSYZ_INTERNAL_RES_MAX);
@@ -132,6 +135,11 @@ int MgsVideoConfigure(const MgsVideoOptions *options)
             fputs("Renderer does not support widescreen presentation.\n", stderr);
             return 0;
         }
+    }
+    if (original_res && strcmp(original_res, "1") == 0 && !widescreen &&
+        Psyz_VideoSetPresentation(4, 3, FRAME_HEIGHT) != 0) {
+        fputs("Renderer cannot preserve original 4:3 output.\n", stderr);
+        return 0;
     }
     if (Psyz_GpuSetFrameTransform(1, 1, 0, 0) != 0 ||
         Psyz_GpuSetFramebufferSampling(0) != 0 ||
@@ -250,6 +258,7 @@ void MgsVideoCodec(int active)
 
 void MgsVideoStage(const char *name)
 {
+    ReiReintegratedTitleVisible = 0;
     static const char *const canvases[] = {
         "init", "init_ve", "init_tux", "title", "preope", "option", "change",
         "abst", "brf", "rank", "roll", "camera", "demosel", "sound",

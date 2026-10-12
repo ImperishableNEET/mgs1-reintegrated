@@ -1,2 +1,5 @@
 # Bootstrap applies these patches to Git index entries with LF line endings.
 patches/*.patch text eol=lf
+
+# Patch context lines may intentionally contain whitespace.
+patches/*.patch -whitespace

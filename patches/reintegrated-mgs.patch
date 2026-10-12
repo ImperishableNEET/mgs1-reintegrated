@@ -1,0 +1,1004 @@
+diff --git a/source/libdg/shade.c b/source/libdg/shade.c
+index 8d382b9..700390a 100644
+--- a/source/libdg/shade.c
++++ b/source/libdg/shade.c
+@@ -3,6 +3,10 @@
+ #include <libgte.h>
+ #include <libgpu.h>
+ #include "mgstype.h"
++#ifdef MGS_NATIVE
++#include <stdint.h>
++#include <string.h>
++#endif
+ 
+ void DG_ShadeStart( void )
+ {
+@@ -29,6 +33,13 @@ static inline void DG_ShadePack( unsigned int *nindices, POLY_GT4 *packs, char *
+     f2 &= 0x3FC;
+     f3 &= 0x3FC;
+ 
++#ifdef MGS_NATIVE
++    /* Normal indices select four-byte PSX colors, independent of host width. */
++    memcpy( &packs->r0, colors + f0, sizeof(uint32_t) );
++    memcpy( &packs->r1, colors + f1, sizeof(uint32_t) );
++    memcpy( &packs->r2, colors + f2, sizeof(uint32_t) );
++    memcpy( &packs->r3, colors + f3, sizeof(uint32_t) );
++#else
+     f0 = (int)(colors + f0);
+     f1 = (int)(colors + f1);
+     f2 = (int)(colors + f2);
+@@ -36,6 +47,7 @@ static inline void DG_ShadePack( unsigned int *nindices, POLY_GT4 *packs, char *
+ 
+     LCOPY2( (void *)f0, &packs->r0, (void *)f1, &packs->r1 );
+     LCOPY2( (void *)f2, &packs->r2, (void *)f3, &packs->r3 );
++#endif
+ }
+ 
+ STATIC POLY_GT4 *DG_ShadePacks( unsigned int *nindices, POLY_GT4 *packs, int n_packs )
+@@ -58,6 +70,36 @@ STATIC POLY_GT4 *DG_ShadePacks( unsigned int *nindices, POLY_GT4 *packs, int n_p
+     return packs;
+ }
+ 
++#ifdef MGS_NATIVE
++STATIC POLY_GT4 *DG_ShadePacksIndirect( unsigned int *nindices, POLY_GT4 *packs, int n_packs,
++                                       unsigned int *vindices, POLY_GT4 *parent_packs )
++{
++    for ( n_packs--; n_packs >= 0; packs++, nindices++, vindices++, n_packs-- )
++    {
++        unsigned int normal = *nindices, vertex = *vindices;
++        unsigned char *dest[4] = { &packs->r0, &packs->r1, &packs->r3, &packs->r2 };
++        char *colors = getScratchAddr(8);
++        int i;
++        if ( !(packs->tag & 0xFFFF) && !(normal & 0x80808080) ) continue;
++        for ( i = 0; i < 4; i++, normal >>= 8, vertex >>= 8 )
++        {
++            const void *source;
++            if ( vertex & 0x80 )
++            {
++                uint32_t offset;
++                memcpy( &offset, dest[i], sizeof(offset) );
++                source = (char *)parent_packs + offset;
++            }
++            else
++            {
++                source = colors + ((normal & 0x7F) * sizeof(uint32_t));
++            }
++            memcpy( dest[i], source, sizeof(uint32_t) );
++        }
++    }
++    return packs;
++}
++#else
+ STATIC POLY_GT4 *DG_ShadePacksIndirect( unsigned int *nindices, POLY_GT4 *packs, int n_packs, unsigned int *vindices )
+ {
+     void        *colors;
+@@ -149,8 +191,13 @@ STATIC POLY_GT4 *DG_ShadePacksIndirect( unsigned int *nindices, POLY_GT4 *packs,
+ 
+     return packs;
+ }
++#endif
+ 
+-STATIC void DG_ShadeObj( DG_OBJ *obj, int idx )
++STATIC void DG_ShadeObj( DG_OBJ *obj, int idx
++#ifdef MGS_NATIVE
++                              , POLY_GT4 *parent_packs
++#endif
++                              )
+ {
+     typedef struct { int d0, d1, d2; } Unit;
+ 
+@@ -197,7 +244,11 @@ STATIC void DG_ShadeObj( DG_OBJ *obj, int idx )
+         }
+         else
+         {
+-            packs = DG_ShadePacksIndirect( (unsigned int *)model->nindices, packs, obj->n_packs, (unsigned int *)model->vindices );
++            packs = DG_ShadePacksIndirect( (unsigned int *)model->nindices, packs, obj->n_packs, (unsigned int *)model->vindices
++#ifdef MGS_NATIVE
++                                           , parent_packs
++#endif
++                                           );
+         }
+     }
+ }
+@@ -242,7 +293,11 @@ void DG_ShadeChanl( DG_CHANL *chanl, int idx )
+                 DG_MulRotMatrix0( &obj->world, getScratchAddr(0) );
+                 gte_SetLightMatrix( getScratchAddr(0) );
+ 
+-                DG_ShadeObj( obj, idx );
++                DG_ShadeObj( obj, idx
++#ifdef MGS_NATIVE
++                             , obj->model->parent >= 0 ? objs->objs[obj->model->parent].packs[GV_Clock] : NULL
++#endif
++                             );
+             }
+ 
+             obj++;
+diff --git a/source/libdg/trans.c b/source/libdg/trans.c
+index 4f089bc..068632b 100644
+--- a/source/libdg/trans.c
++++ b/source/libdg/trans.c
+@@ -5,6 +5,8 @@
+ #include "libgv/libgv.h" // for GV_Clock
+ #ifdef MGS_NATIVE
+ #include "mgs_video.h"
++#include <stdint.h>
++#include <string.h>
+ #endif
+ 
+ typedef struct _SCRATCH
+@@ -14,8 +16,10 @@ typedef struct _SCRATCH
+     short     bothface;
+     short     flags;
+     DVECTOR   zf[126];
++#ifndef MGS_NATIVE
+     POLY_GT4 *parent_packs;
+     SVECTOR  *vertices;
++#endif
+ } SCRATCH;
+ 
+ #define SPAD ((SCRATCH *)getScratchAddr(0))
+@@ -25,6 +29,46 @@ void DG_TransStart( void )
+     /* do nothing */
+ }
+ 
++#ifdef MGS_NATIVE
++STATIC unsigned int DG_WriteObjVerticesIndirect( unsigned int vidx, POLY_GT4 *packs,
++                                                    POLY_GT4 *parent_packs, SVECTOR *vertices )
++{
++    static const unsigned char shifts[4] = { 0, 8, 24, 16 };
++    short *xy[4] = { &packs->x0, &packs->x1, &packs->x2, &packs->x3 };
++    int num = 0, stride = 0, i;
++    unsigned short flags;
++    if ( !parent_packs ) return 0;
++    memcpy( &flags, (char *)getScratchAddr(0) + 0x1FE, sizeof(flags) );
++    for ( i = 0; i < 4; i++ )
++    {
++        unsigned int vertex = (vidx >> shifts[i]) & 0xFF;
++        const void *projected;
++        uint32_t value;
++        if ( vertex & 0x80 )
++        {
++            int offset = vertices[vertex & 0x7F].pad;
++            projected = (char *)parent_packs + offset;
++            if ( flags & 4 )
++            {
++                uint32_t color_offset = (uint32_t)(offset - sizeof(uint32_t));
++                memcpy( (char *)xy[i] - sizeof(uint32_t), &color_offset, sizeof(color_offset) );
++            }
++        }
++        else
++        {
++            uint32_t depth;
++            projected = (char *)getScratchAddr(0) + vertex * sizeof(uint32_t);
++            memcpy( &depth, (const char *)projected + 0x200, sizeof(depth) );
++            num += (int)depth;
++            stride++;
++        }
++        memcpy( &value, projected, sizeof(value) );
++        memcpy( xy[i], &value, sizeof(value) );
++        MgsTextureCorrectionCopy( xy[i], projected );
++    }
++    return stride > 0 && stride < 4 ? num / stride : 0;
++}
++#else
+ STATIC unsigned int DG_WriteObjVerticesIndirect( unsigned int vidx, POLY_GT4 *packs )
+ {
+     int *pack_ptr;
+@@ -106,8 +150,13 @@ STATIC unsigned int DG_WriteObjVerticesIndirect( unsigned int vidx, POLY_GT4 *pa
+     }
+     return 0;
+ }
++#endif
+ 
+-STATIC POLY_GT4 *DG_WriteObjVertices( unsigned int *vindices, POLY_GT4 *packs, int n_packs )
++STATIC POLY_GT4 *DG_WriteObjVertices( unsigned int *vindices, POLY_GT4 *packs, int n_packs
++#ifdef MGS_NATIVE
++                                      , POLY_GT4 *parent_packs, SVECTOR *vertices
++#endif
++                                      )
+ {
+     unsigned char bVar1;
+     int area;
+@@ -127,7 +176,11 @@ STATIC POLY_GT4 *DG_WriteObjVertices( unsigned int *vindices, POLY_GT4 *packs, i
+ 
+         if (*vindices & 0x80808080)
+         {
+-            uVar7 = DG_WriteObjVerticesIndirect(*vindices, packs);
++            uVar7 = DG_WriteObjVerticesIndirect(*vindices, packs
++#ifdef MGS_NATIVE
++                                                      , parent_packs, vertices
++#endif
++                                                      );
+             continue;
+         }
+ 
+@@ -379,7 +432,11 @@ static inline void DG_TransVertices( PVECTOR *verts, int n_verts )
+     }
+ }
+ 
+-STATIC void DG_TransObj( DG_OBJ *obj, int idx )
++STATIC void DG_TransObj( DG_OBJ *obj, int idx
++#ifdef MGS_NATIVE
++                              , POLY_GT4 *parent_packs
++#endif
++                              )
+ {
+     POLY_GT4   *packs;
+     DG_MDL     *model;
+@@ -406,7 +463,11 @@ STATIC void DG_TransObj( DG_OBJ *obj, int idx )
+ #endif
+         SPAD->bothface = model->flag & DG_MODEL_BOTHFACE;
+ 
+-        packs = DG_WriteObjVertices( ( unsigned int * ) model->vindices, packs, obj->n_packs );
++        packs = DG_WriteObjVertices( ( unsigned int * ) model->vindices, packs, obj->n_packs
++#ifdef MGS_NATIVE
++                                      , parent_packs, model->verts
++#endif
++                                      );
+         obj = obj->extend;
+     }
+ }
+@@ -422,6 +483,9 @@ void DG_TransChanl( DG_CHANL *chanl, int idx )
+     int       n_models;
+     DG_MDL   *model;
+     DG_OBJ   *parent;
++#ifdef MGS_NATIVE
++    POLY_GT4 *parent_packs;
++#endif
+ 
+     work = (SCRATCH *)getScratchAddr(0);
+ 
+@@ -448,11 +512,14 @@ void DG_TransChanl( DG_CHANL *chanl, int idx )
+             }
+ 
+             model = obj->model;
++#ifdef MGS_NATIVE
++            parent = model->parent >= 0 ? &objs->objs[model->parent] : NULL;
++            parent_packs = parent ? parent->packs[GV_Clock] : NULL;
++#else
+             parent = &objs->objs[model->parent];
+-
+-
+             work->parent_packs = parent->packs[GV_Clock];
+             work->vertices = model->verts;
++#endif
+ 
+             gte_SetRotMatrix(&obj->screen);
+             gte_SetTransMatrix(&obj->screen);
+@@ -463,7 +530,11 @@ void DG_TransChanl( DG_CHANL *chanl, int idx )
+                 work->flags |= 4;
+             }
+ 
+-            DG_TransObj(obj, idx);
++            DG_TransObj(obj, idx
++#ifdef MGS_NATIVE
++                        , parent_packs
++#endif
++                        );
+         }
+     }
+ }
+diff --git a/source/libfs/cdstage.c b/source/libfs/cdstage.c
+index 63fd15f..a42a4d4 100644
+--- a/source/libfs/cdstage.c
++++ b/source/libfs/cdstage.c
+@@ -235,7 +235,11 @@ static int SetupNextFile( DATACNF_TAG *tag, CDBIOS_TASK *task )
+     case 'n': // .nocache
+         if ( tag->size <= 0x13FFF )
+         {
++#ifdef MGS_NATIVE
++            info->tag_start2 = (DATACNF_TAG *)((char *)info->tag_end1 + 0x19000);
++#else
+             info->tag_start2 = (DATACNF_TAG *)((int)info->tag_end1 + 0x19000);
++#endif
+         }
+         else
+         {
+diff --git a/source/libgcl/basic.c b/source/libgcl/basic.c
+index ab55314..ec76839 100644
+--- a/source/libgcl/basic.c
++++ b/source/libgcl/basic.c
+@@ -2,6 +2,50 @@
+ #include "mgstype.h"
+ #include "strcode.h"
+ 
++#ifdef MGS_NATIVE
++static int GCL_Command_if( char *top )
++{
++    int type, res;
++    intptr_t value;
++    char *p, *block;
++
++    p = top;
++
++EXEC_IF:
++    p = GCL_GetNextValue( p, &type, &res );
++
++EXEC_ELSE:
++    p = GCL_GetPointerValue( p, &type, &value );
++    block = (char *)value;
++
++    if ( res )
++    {
++        GCL_ExecBlock( block, NULL );
++    }
++    else
++    {
++        p = GCL_GetPointerValue( p, &type, &value );
++        if ( p != NULL )
++        {
++            type >>= 16;
++            p = (char *)value;
++
++            if ( type == 'e' )
++            {
++                res = 1;
++                goto EXEC_ELSE;
++            }
++            else if ( type == 'i' )
++            {
++                goto EXEC_IF;
++            }
++        }
++    }
++
++    return GCL_OK;
++}
++
++#else
+ static int GCL_Command_if( char *top )
+ {
+     int type, res;
+@@ -42,6 +86,7 @@ EXEC_ELSE:
+     return GCL_OK;
+ }
+ 
++#endif
+ static int GCL_Command_eval( char *top )
+ {
+     int type, res;
+@@ -51,6 +96,43 @@ static int GCL_Command_eval( char *top )
+     return GCL_OK;
+ }
+ 
++#ifdef MGS_NATIVE
++static int GCL_Command_foreach( char *top )
++{
++    long argbuf[ GCL_PROC_MAX_ARGS ];
++    int i, type;
++    intptr_t value;
++    GCL_ARGS arg;
++    long *p;
++    char *block;
++
++    p = argbuf;
++    for ( ;; )
++    {
++        top = GCL_GetPointerValue( top, &type, &value );
++        if ( ( type & 0xFF ) == GCL_OPTION )
++        {
++            break;
++        }
++        *p++ = (int)value;
++    }
++
++    top = GCL_GetPointerValue( (char *)value, &type, &value );
++    block = (char *)value; // "-do" parameter
++
++    arg.argc = 1;
++    arg.argv = argbuf;
++
++    for ( i = p - argbuf; i > 0; i-- )
++    {
++        GCL_ExecBlock( block, &arg );
++        arg.argv++;
++    }
++
++    return GCL_OK;
++}
++
++#else
+ static int GCL_Command_foreach( char *top )
+ {
+     long argbuf[ GCL_PROC_MAX_ARGS ];
+@@ -85,6 +167,7 @@ static int GCL_Command_foreach( char *top )
+     return GCL_OK;
+ }
+ 
++#endif
+ static int GCL_Command_return( char *top )
+ {
+     return GCL_RETURN;
+diff --git a/source/libgcl/libgcl.h b/source/libgcl/libgcl.h
+index a1d4769..603045b 100644
+--- a/source/libgcl/libgcl.h
++++ b/source/libgcl/libgcl.h
+@@ -162,6 +162,10 @@ int GCL_Expr( char *data, int *value );
+ /* parse.c */
+ void  GCL_SetArgTop( char *top );
+ char *GCL_GetNextValue( char *top, int *type_p, int *value_p );
++#ifdef MGS_NATIVE
++#include <stdint.h>
++char *GCL_GetPointerValue(char *top, int *type_p, intptr_t *value_p);
++#endif
+ void *GCL_SetArgStack( GCL_ARGS *args );
+ void  GCL_UnsetArgStack( void *stack );
+ int   GCL_GetArgs( int argno );
+diff --git a/source/libgcl/parse.c b/source/libgcl/parse.c
+index b3d1c68..b08ba90 100644
+--- a/source/libgcl/parse.c
++++ b/source/libgcl/parse.c
+@@ -1,6 +1,9 @@
+ #include "libgcl.h"
+ 
+ #include <stdio.h>
++#ifdef MGS_NATIVE
++#include <stdint.h>
++#endif
+ #include "mgstype.h"
+ 
+ /*** $gp ***/
+@@ -90,6 +93,47 @@ char *GCL_GetNextValue( char *top, int *type_p, int *value_p )
+     return p;
+ }
+ 
++
++#ifdef MGS_NATIVE
++/* Pointer-bearing tags retain full host addresses. Scalar values still use the
++ * original int parser; this does not widen its public numeric/argument ABI. */
++char *GCL_GetPointerValue(char *top, int *type_p, intptr_t *value_p)
++{
++    unsigned char *p = (unsigned char *)top + 1;
++    int type = (unsigned char)*top;
++    switch (type)
++    {
++    case GCL_STRING:
++        *value_p = (intptr_t)(p + 1);
++        p += *p + 1;
++        break;
++    case GCL_ARG:
++        *value_p = (intptr_t)(p + 2);
++        p += GCL_GetShort((char *)p);
++        break;
++    case GCL_OPTION:
++        type |= *p << 16;
++        *value_p = (intptr_t)(p + 2);
++        p += p[1] + 1;
++        break;
++    default:
++    {
++        int scalar = 0;
++        char *next = GCL_GetNextValue(top, type_p, &scalar);
++        *value_p = scalar;
++        return next;
++    }
++    }
++    *type_p = type;
++    next_str_ptr = (char *)p;
++    return (char *)p;
++}
++#endif
++
++#ifndef MGS_NATIVE
++#define GCL_GetPointerValue GCL_GetNextValue
++#endif
++
+ static void GCL_InitArgStack(void)
+ {
+     argstack_p = argbuffer;
+@@ -97,7 +141,8 @@ static void GCL_InitArgStack(void)
+ 
+ void *GCL_SetArgStack( GCL_ARGS *args )
+ {
+-    int *org, *argv;
++    int *org;
++    long *argv;
+     int i;
+ 
+     if ( args == NULL )
+@@ -106,7 +151,7 @@ void *GCL_SetArgStack( GCL_ARGS *args )
+     }
+ 
+     org = argstack_p;
+-    argv = (int *)( args->argv + ( args->argc - 1 ) );
++    argv = args->argv + ( args->argc - 1 );
+ 
+     for ( i = args->argc; i > 0; i-- )
+     {
+@@ -153,9 +198,14 @@ char *GCL_GetOption( char c )
+ 
+     for ( ;; )
+     {
+-        int type, value;
+-
+-        p = GCL_GetNextValue( p, &type, &value );
++        int type;
++#ifdef MGS_NATIVE
++        intptr_t value;
++#else
++        int value;
++#endif
++
++        p = GCL_GetPointerValue( p, &type, &value );
+         if ( type == GCL_END ) return NULL;
+         if ( ( type & 0xFF ) == GCL_OPTION )
+         {
+@@ -192,9 +242,14 @@ int GCL_StrToSV( char *ptr, short *vec )
+ 
+ char *GCL_GetString( char *ptr )
+ {
+-    int type, value;
+-
+-    if ( ( next_str_ptr = GCL_GetNextValue( ptr, &type, &value ) ) == NULL )
++    int type;
++#ifdef MGS_NATIVE
++        intptr_t value;
++#else
++        int value;
++#endif
++
++    if ( ( next_str_ptr = GCL_GetPointerValue( ptr, &type, &value ) ) == NULL )
+     {
+         return NULL;
+     }
+diff --git a/source/libgcl/variable.c b/source/libgcl/variable.c
+index 3d0644d..9aad134 100644
+--- a/source/libgcl/variable.c
++++ b/source/libgcl/variable.c
+@@ -175,6 +175,21 @@ void GCL_InitVar( void )
+     int level;
+ 
+     option = GM_Configuration;
++#ifdef MGS_NATIVE
++    /* Launcher preference applies once, leaving later in-game choices alone. */
++    static int launcher_preferences_applied;
++    if (!launcher_preferences_applied)
++    {
++        const char *preferences = getenv("REI_ENGLISH_CAPTIONS");
++        launcher_preferences_applied = 1;
++        if (preferences && preferences[0] == '1' && preferences[1] == '\0')
++        {
++            option = (option | GM_CONFIG_ENGLISH) & ~GM_CONFIG_CAPTION_OFF;
++            printf("[preferences] English text / captions on: %04x -> %04x\n",
++                   (unsigned short)GM_Configuration, (unsigned short)option);
++        }
++    }
++#endif
+     level = GM_GameLevel;
+ 
+     memset( var_buf, 0, 1024 * sizeof(short) );
+diff --git a/source/libgv/memory.c b/source/libgv/memory.c
+index e26771e..837b9b4 100644
+--- a/source/libgv/memory.c
++++ b/source/libgv/memory.c
+@@ -1,5 +1,6 @@
+ #include "libgv.h"
+ #include <stdio.h>
++#include <stdint.h>
+ #include "mgstype.h"
+ 
+ M_Sys SECTION(".bss") MemorySystems[ MAX_MEMSYS ];
+@@ -681,7 +682,7 @@ void GV_FreeMemory2( int which, void **addr )
+ 
+ void GV_CopyMemory( void *from, void *to, int size )
+ {
+-    typedef struct { long d0, d1, d2, d3; } Unit;
++    typedef struct { uint32_t d0, d1, d2, d3; } Unit;
+     int     i, i2;
+     Unit    *u0;
+     Unit    *u1;
+@@ -692,8 +693,8 @@ void GV_CopyMemory( void *from, void *to, int size )
+     c1 = (char *)to;
+ 
+     // Calculate the alignment of the source and destination addresses
+-    i = 3 & (long)from;
+-    i2 = 3 & (long)to;
++    i = 3 & (uintptr_t)from;
++    i2 = 3 & (uintptr_t)to;
+ 
+     // If the alignments are different, copy byte by byte
+     if (i2 != i) {
+@@ -724,13 +725,13 @@ void GV_CopyMemory( void *from, void *to, int size )
+ // clang-format off
+ void GV_ZeroMemory( void *to, int size )
+ {
+-    typedef struct { long d0, d1, d2, d3; } Unit;
++    typedef struct { uint32_t d0, d1, d2, d3; } Unit;
+     Unit    *u;
+     char    *c;
+     int     i;
+ 
+     c = (char *)to;
+-    i = 3 & (long)to;
++    i = 3 & (uintptr_t)to;
+     size -= i;
+     for (; i > 0; --i) {
+         *(c++) = 0;
+diff --git a/source/menu/radio.c b/source/menu/radio.c
+index b57dfaf..308256f 100644
+--- a/source/menu/radio.c
++++ b/source/menu/radio.c
+@@ -18,6 +18,18 @@
+ #include "game/game.h"
+ #ifdef MGS_NATIVE
+ #include "mgs_video.h"
++/* Optional host enhancement: normal script execution, no clock acceleration.
++ * Only dialogue states use this; save/choice states retain original inputs. */
++static int ReiCodecTurboHeld(unsigned short status, int flags)
++{
++    static int enabled = -1;
++    if (enabled < 0)
++    {
++        const char *option = getenv("REI_CODEC_TURBO");
++        enabled = option && option[0] == '1' && option[1] == '\0';
++    }
++    return enabled && (status & PAD_TRIANGLE) && !(flags & 1);
++}
+ #endif
+ 
+ static SPRT             SECTION(".bss") gRadioNumberSprt_800bd9b0;
+@@ -1218,11 +1230,25 @@ skip_fading:
+         draw_radio_wait_mark(work, ot);
+         if ((pPad->release &
+              (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT | PAD_TRIANGLE | PAD_CROSS | PAD_SQUARE | PAD_CIRCLE)) &&
+-            work->field_212 == 0)
++            work->field_212 == 0
++#ifdef MGS_NATIVE
++            || (ReiCodecTurboHeld(pPad->status, work->field_218->field_18) && !(GV_Time % 6))
++#endif
++            )
+         {
++#ifdef MGS_NATIVE
++            if (ReiCodecTurboHeld(pPad->status, work->field_218->field_18))
++                printf("[codec-turbo] advance time=%d\n", GV_Time);
++#endif
+             menu_radio_codec_helper_helper8_80048044();
+             sub_80041118(work);
+             work->field_210_codec_state = 3;
++#ifdef MGS_NATIVE
++            /* State 3 reuses field_212 as a countdown, not a button mask.
++             * A held-button advance must not carry the debounce mask into it. */
++            if (ReiCodecTurboHeld(pPad->status, work->field_218->field_18))
++                work->field_212 = 0;
++#endif
+         }
+         if (!(pPad->status & work->field_212))
+         {
+@@ -1271,8 +1297,16 @@ skip_fading:
+         }
+         else
+         {
+-            if (!(pCharaStruct2->field_18 & 1) && (pPad->release & PAD_CROSS))
++            if (!(pCharaStruct2->field_18 & 1) && ((pPad->release & PAD_CROSS)
++#ifdef MGS_NATIVE
++                || ReiCodecTurboHeld(pPad->status, pCharaStruct2->field_18)
++#endif
++                ))
+             {
++#ifdef MGS_NATIVE
++                if (ReiCodecTurboHeld(pPad->status, pCharaStruct2->field_18))
++                    printf("[codec-turbo] interrupt time=%d\n", GV_Time);
++#endif
+                 menu_radio_codec_helper__helper13_800410E4(work, pCharaStruct2->field_C_pScript);
+                 dword_800ABAF8 = 8;
+                 pCharaStruct2->field_14_bInExecBlock = 0;
+diff --git a/source/mts/mts_new.c b/source/mts/mts_new.c
+index edf4a79..3f19cd0 100644
+--- a/source/mts/mts_new.c
++++ b/source/mts/mts_new.c
+@@ -1,6 +1,7 @@
+ #define __IN_MTS_NEW__
+ 
+ #include <sys/types.h>
++#include <stdint.h>
+ #include <kernel.h>
+ #include <libapi.h>
+ #include <libetc.h>
+@@ -17,6 +18,7 @@
+ #define EnterCriticalSection SwEnterCriticalSection
+ #define ExitCriticalSection SwExitCriticalSection
+ static int mts_native_interrupt_pending;
++static size_t mts_native_message_bytes[MTS_NR_TASK];
+ static unsigned long mts_native_task_start(void);
+ #else
+ int printf(/* const char *format, ... */);
+@@ -401,6 +403,9 @@ static inline void mts_CreateTask( int tasknr, void *stackend, void *entrypoint
+     SwEnterCriticalSection();
+ 
+     task = &mts_tasks_800C0C30[ tasknr ];
++#ifdef MGS_NATIVE
++    mts_native_message_bytes[tasknr] = 0;
++#endif
+ 
+     mts_assert( entrypoint && stackend, 717, "task_create %x %x", (unsigned int)entrypoint, (unsigned int)stackend );
+ 
+@@ -449,6 +454,20 @@ static inline void mts_copy_message(unsigned char *dst, unsigned char *src)
+     ((int *)dst)[3] = ((int *)src)[3];
+ }
+ 
++#ifdef MGS_NATIVE
++/* Declared sizes belong to blocked message buffers, not destination task IDs. */
++static void mts_native_copy_message(unsigned char *dst, unsigned char *src,
++                                    int receiver, int sender)
++{
++    size_t bytes = mts_native_message_bytes[sender];
++    if (bytes != mts_native_message_bytes[receiver] ||
++        (bytes != 16 && bytes != sizeof(MTS_SYS_MSG)))
++        MgsThreadsFail("scheduler message buffer size mismatch");
++    if (bytes == 16) mts_copy_message(dst, src);
++    else memcpy(dst, src, bytes);
++}
++#endif
++
+ /**
+  * @brief Sends a message to a specified task
+  *
+@@ -460,7 +479,11 @@ static inline void mts_copy_message(unsigned char *dst, unsigned char *src)
+  * @param dst     The identifier of the destination task to which the message is sent.
+  * @param message A pointer to the message structure to be sent.
+  */
++#ifdef MGS_NATIVE
++static void mts_send_sized(int dst, unsigned char *message, size_t bytes)
++#else
+ void mts_send( int dst, unsigned char *message )
++#endif
+ {
+     MTS_TASK *to;
+     MTS_TASK *from;
+@@ -470,6 +493,9 @@ void mts_send( int dst, unsigned char *message )
+     to = &mts_tasks_800C0C30[ dst ];
+     mts_assert( to->state != MTS_TASK_DEAD, 779, "send state DEAD %d", dst );
+ 
++    #ifdef MGS_NATIVE
++    mts_native_message_bytes[mts_active_task_800C0DB0] = bytes;
++    #endif
+     SwEnterCriticalSection();
+ 
+     // Check if the destination task is ready to receive the message
+@@ -479,7 +505,11 @@ void mts_send( int dst, unsigned char *message )
+         // Directly deliver the message to the destination task
+         to->src = mts_active_task_800C0DB0;
+ 
++#ifdef MGS_NATIVE
++        mts_native_copy_message(to->u.message, message, dst, mts_active_task_800C0DB0);
++#else
+         mts_copy_message(to->u.message, message);
++#endif
+ 
+         to->state = MTS_TASK_READY;
+         to->u.message = NULL;
+@@ -555,7 +585,11 @@ int mts_isend( int dst )
+     return 1;
+ }
+ 
++#ifdef MGS_NATIVE
++static int mts_receive_sized(int src, unsigned char *message, size_t bytes)
++#else
+ int mts_receive( int src, unsigned char *message )
++#endif
+ {
+     MTS_TASK *to;
+     MTS_TASK *from;
+@@ -576,6 +610,9 @@ int mts_receive( int src, unsigned char *message )
+ 
+     SwEnterCriticalSection();
+ 
++#ifdef MGS_NATIVE
++    mts_native_message_bytes[mts_active_task_800C0DB0] = bytes;
++#endif
+     to->pending = src;
+ 
+     if ( src == MTS_TASK_INTR )
+@@ -610,7 +647,11 @@ int mts_receive( int src, unsigned char *message )
+         mts_assert( from->state == MTS_TASK_SENDING, 939, "rcv sp %d state %d", to->next_task, from->state );
+         mts_assert( from->u.message, 940, "rcv sp message %X", (unsigned int)from->u.message );
+ 
++#ifdef MGS_NATIVE
++        mts_native_copy_message(message, from->u.message, mts_active_task_800C0DB0, to->next_task);
++#else
+         mts_copy_message(message, from->u.message);
++#endif
+ 
+         to->src = to->next_task;
+         mts_ready_tasks_800C0DB4 |= 1 << to->next_task;
+@@ -641,7 +682,11 @@ int mts_receive( int src, unsigned char *message )
+             mts_assert( next_task->state == MTS_TASK_SENDING, 970, "rcv sp %d state %d", next, next_task->state );
+             mts_assert( next_task->u.message, 971, "rcv sp %d message %x", next, (unsigned int)next_task->u.message );
+ 
++#ifdef MGS_NATIVE
++            mts_native_copy_message(message, next_task->u.message, mts_active_task_800C0DB0, next);
++#else
+             mts_copy_message(message, next_task->u.message);
++#endif
+ 
+             to->src = next;
+             next_task->state = MTS_TASK_READY;
+@@ -676,6 +721,18 @@ int mts_receive( int src, unsigned char *message )
+     return mts_tasks_800C0C30[ mts_active_task_800C0DB0 ].src;
+ }
+ 
++#ifdef MGS_NATIVE
++void mts_send(int dst, unsigned char *message) { mts_send_sized(dst,message,16); }
++int mts_receive(int src, unsigned char *message) { return mts_receive_sized(src,message,16); }
++static void mts_send_system(int dst, MTS_SYS_MSG *message)
++{ mts_send_sized(dst,(unsigned char *)message,sizeof(*message)); }
++static int mts_receive_system(int src, MTS_SYS_MSG *message)
++{ return mts_receive_sized(src,(unsigned char *)message,sizeof(*message)); }
++#else
++#define mts_send_system(dst,msg) mts_send(dst,(unsigned char *)(msg))
++#define mts_receive_system(src,msg) mts_receive(src,(unsigned char *)(msg))
++#endif
++
+ /**
+  * @brief Puts the current task to sleep or keeps it ready based on its reference count.
+  *
+@@ -940,6 +997,9 @@ void mts_boot( int tasknr, void (*procedure)(void), void *stack_pointer )
+     for ( i = 0; i < MTS_NR_TASK; i++ )
+     {
+         mts_tasks_800C0C30[ i ].state = MTS_TASK_DEAD;
++#ifdef MGS_NATIVE
++        mts_native_message_bytes[i] = 0;
++#endif
+         mts_tasks_800C0C30[ i ].stack_top = NULL;
+         mts_tasks_800C0C30[ i ].stack_size = 0;
+     }
+@@ -1024,7 +1084,7 @@ void mts_SystemTaskEntrypoint( void )
+ 
+     while ( 1 )
+     {
+-        src = mts_receive( MTS_TASK_ANY, (unsigned char *)&msg );
++        src = mts_receive_system(MTS_TASK_ANY, &msg);
+         mts_assert( src >= 0 &&
+                     mts_task_valid(src) &&
+                     src != MTS_TASK_SYSTEM &&
+@@ -1051,6 +1111,9 @@ void mts_SystemTaskEntrypoint( void )
+                 SwEnterCriticalSection();
+ 
+                 task = &mts_tasks_800C0C30[ tasknr ];
++#ifdef MGS_NATIVE
++                mts_native_message_bytes[tasknr] = 0;
++#endif
+                 task->next_task = -1;
+                 task->task_queue = -1;
+                 task->u.callback = (int ( * )( void ))start;
+@@ -1093,6 +1156,9 @@ void mts_SystemTaskEntrypoint( void )
+ 
+             intr = mts_tasks_800C0C30[ src ].intr;
+             mts_tasks_800C0C30[ src ].state = MTS_TASK_DEAD;
++#ifdef MGS_NATIVE
++            mts_native_message_bytes[src] = 0;
++#endif
+ 
+             if ( intr )
+             {
+@@ -1115,7 +1181,7 @@ void mts_SystemTaskEntrypoint( void )
+ 
+         if ( send )
+         {
+-            mts_send( src, (unsigned char *)&msg );
++            mts_send_system(src, &msg);
+         }
+     }
+ }
+@@ -1141,9 +1207,9 @@ int mts_sta_tsk( int tasknr, void (*procedure)(void), void *stack_pointer )
+     msg.procedure = procedure;
+     msg.code = MTS_SYS_START;
+     msg.stack_pointer = stack_pointer;
+-    mts_send( MTS_TASK_SYSTEM, (unsigned char *)&msg );
++    mts_send_system(MTS_TASK_SYSTEM, &msg);
+ 
+-    err = mts_receive( MTS_TASK_SYSTEM, (unsigned char *)&msg );
++    err = mts_receive_system(MTS_TASK_SYSTEM, &msg);
+     mts_assert( !err, 1344, "mts_sta_tsk server %d", err );
+ 
+     return msg.code;
+@@ -1154,7 +1220,7 @@ void mts_ext_tsk( void )
+     MTS_SYS_MSG msg;
+ 
+     msg.code = MTS_SYS_EXIT;
+-    mts_send( MTS_TASK_SYSTEM, (unsigned char *)&msg );
++    mts_send_system(MTS_TASK_SYSTEM, &msg);
+ 
+     mts_assert( 0, 1359, "mts_ext_tsk" );
+ }
+@@ -1207,7 +1273,7 @@ int mts_get_task_res1( long id )
+  */
+ void mts_set_stack_check( long task, void *stack_top, long stack_size )
+ {
+-    unsigned long *stackp;
++    uint32_t *stackp;
+ 
+     mts_tasks_800C0C30[ task ].stack_top = stack_top;
+     mts_tasks_800C0C30[ task ].stack_size = stack_size;
+@@ -1216,7 +1282,7 @@ void mts_set_stack_check( long task, void *stack_top, long stack_size )
+     while ( stack_size > 0 )
+     {
+         *( --stackp ) = MTS_STACK_COOKIE;
+-        stack_size -= sizeof( unsigned int );
++        stack_size -= sizeof( *stackp );
+     }
+ }
+ 
+diff --git a/source/onoda/open/open.c b/source/onoda/open/open.c
+index 899019b..e33cfd1 100644
+--- a/source/onoda/open/open.c
++++ b/source/onoda/open/open.c
+@@ -1,4 +1,8 @@
+ #include <stdio.h>
++#ifdef MGS_NATIVE
++#include <stdlib.h>
++static int rei_source_palette_demo;
++#endif
+ #include <sys/types.h>
+ #include <libgte.h>
+ #include <libgpu.h>
+@@ -388,6 +392,11 @@ static int title_open_800C4B2C(int val)
+ 
+ static void title_open_800C4B94(POLY_GT4 *poly, int r0, int g0, int b0, int r2, int g2, int b2)
+ {
++#ifdef MGS_NATIVE
++    if (rei_source_palette_demo) {
++        r0 = r2 = 16; g0 = g2 = 64; b0 = b2 = 128;
++    }
++#endif
+     setRGB0(poly, r0, g0, b0);
+     setRGB1(poly, r0, g0, b0);
+     setRGB2(poly, r2, g2, b2);
+@@ -8434,6 +8443,10 @@ void title_open_800D3500(Work *work, OT_TYPE *ot)
+ 
+ static void Act(Work *work)
+ {
++#ifdef MGS_NATIVE
++    extern int ReiReintegratedTitleVisible;
++    ReiReintegratedTitleVisible = work->fA74 == 6 || work->fA74 == 7;
++#endif
+     OT_TYPE   *ot;
+     POLY_FT4 *packs;
+ 
+@@ -8830,6 +8843,10 @@ static void Act(Work *work)
+ 
+ static void Die(Work *work)
+ {
++#ifdef MGS_NATIVE
++    extern int ReiReintegratedTitleVisible;
++    ReiReintegratedTitleVisible = 0;
++#endif
+     int      i;
+     void    *buf;
+ 
+@@ -9004,6 +9021,15 @@ static int GetResources(Work *work, int where)
+ 
+     poly++;
+     title_open_800D4368(work, GV_StrCode("op_title"), poly, -0x70, -0x66, 0x76, -0x2A, 1);
++#ifdef MGS_NATIVE
++    /* Preserve the animated background: omit only the original subtitle band
++       from its own textured quad instead of covering the displayed image. */
++    const char *rebrand = getenv("REI_REINTEGRATED_TITLE");
++    if (rebrand && rebrand[0] == '1' && rebrand[1] == '\0') {
++        poly->v2 = poly->v3 = poly->v0 + (poly->v2 - poly->v0) * 49 / 60;
++        poly->y2 = poly->y3 = -53;
++    }
++#endif
+     work->f30[n++] = 0;
+ 
+     poly++;
+@@ -9806,6 +9832,19 @@ static int GetResources(Work *work, int where)
+ void *NewOpen(int name, int where)
+ {
+     Work *work;
++#ifdef MGS_NATIVE
++    const char *demo = getenv("REI_SOURCE_PALETTE_DEMO");
++    if (demo && demo[0] == '1' && demo[1] == '\0') {
++        rei_source_palette_demo = 1;
++        for (int i = 0; i < 10; ++i) {
++            title_dword_800C33D8[i].r = 32;
++            title_dword_800C33D8[i].g = 128;
++            title_dword_800C33D8[i].b = 192;
++        }
++        puts("[source-edit] recovered NewOpen: optional blue title palette enabled");
++    }
++#endif
++
+ 
+     GM_GameStatus |= STATE_ALL_OFF;
+ 

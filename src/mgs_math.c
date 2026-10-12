@@ -5,9 +5,9 @@
 
 extern short SQRT[];
 
-long MgsSquareRoot0(long value)
+int32_t MgsSquareRoot0(int32_t value)
 {
-    _Static_assert(sizeof(long) == 4, "Integral SDK arithmetic requires 32-bit long");
+    _Static_assert(sizeof(int32_t) == 4 && sizeof(uint32_t) == 4, "Integral SDK arithmetic requires 32-bit words");
     Psyz_GteDataWrite(30, (uint32_t)value);
     unsigned int leading = Psyz_GteDataRead(31);
     if (leading == 32)
@@ -30,5 +30,5 @@ long MgsSquareRoot0(long value)
         assert(index < 192);
         sample = SQRT[index];
     }
-    return (long)(((uint32_t)sample << ((31 - even) / 2)) >> 12);
+    return (int32_t)(((uint32_t)sample << ((31 - even) / 2)) >> 12);
 }

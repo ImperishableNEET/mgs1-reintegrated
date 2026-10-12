@@ -221,8 +221,8 @@ def identify(disc: Disc, files: tuple[Entry, ...]) -> str:
 
 def plan_import(source: Path) -> list[DiscPlan]:
     cues = sorted(path for path in source.iterdir() if path.suffix.lower() == ".cue")
-    if len(cues) != len(EDITIONS):
-        raise ValueError("Expected exactly three CUE files: Integral discs 1, 2 and VR")
+    if not cues:
+        raise ValueError("Expected at least one Integral CUE/BIN pair")
     plans = []
     serials = set()
     for cue in cues:
@@ -341,7 +341,7 @@ def import_content(source: Path, output: Path) -> dict:
     output = output.resolve()
     if not source.is_dir():
         raise ValueError(
-            "Source must be a directory containing the three BIN/CUE pairs"
+            "Source must be a directory containing supported Integral BIN/CUE pairs"
         )
     if output.is_relative_to(source) or source.is_relative_to(output):
         raise ValueError("Output must be separate from the source directory")

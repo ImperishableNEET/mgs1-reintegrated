@@ -91,7 +91,8 @@
         "patches/mgs-precise-face-culling.patch",
         "patches/mgs-precise-subdivision.patch",
         "patches/mgs-loading-pacing.patch",
-        "patches/mgs-language-packs.patch"
+        "patches/mgs-language-packs.patch",
+        "patches/reintegrated-mgs.patch"
       ]
     },
     {
@@ -122,7 +123,8 @@
         "patches/psyz-audio-output-buffer.patch",
         "patches/psyz-godot-command-transport.patch",
         "patches/psyz-projected-geometry.patch",
-        "patches/psyz-audio-output-suppression.patch"
+        "patches/psyz-audio-output-suppression.patch",
+        "patches/reintegrated-psyz.patch"
       ]
     },
     {

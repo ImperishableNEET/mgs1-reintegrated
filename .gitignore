@@ -14,3 +14,27 @@ __pycache__/
 renderers/godot/project/.godot/
 renderers/godot/project/.generated/
 renderers/godot/project/mods/
+
+# Private game data and local development output
+content/
+discs/
+saves/
+postboss-saves/
+artifacts/
+*.bin
+*.cue
+*.iso
+*.chd
+*.mcr
+*.mcd
+*.sav
+*.exe
+*.dll
+*.pdb
+*.obj
+*.log
+local-settings.json
+*.dat
+*.dir
+*.str
+*.xa
