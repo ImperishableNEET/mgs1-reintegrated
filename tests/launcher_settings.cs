@@ -75,7 +75,8 @@ internal static class LauncherSettingsTest
     private static void CheckArguments()
     {
         var settings = new Settings { BonusItems = true, Invulnerable = true, AutoCard = true, FastLoading = true,
-            DebugOverlay = true, Fullscreen = true, TextureCorrection = true, GeometryPrecision = true, DepthBuffer = true,
+            DebugOverlay = true, Fullscreen = true, Widescreen = true,
+            TextureCorrection = true, GeometryPrecision = true, DepthBuffer = true,
             Stage = "s00a", Frames = "600", MantisMemory = "42",
             Advanced = "--capture \"C:\\frame capture.bmp\"" };
         string command = GameLaunch.Arguments(settings);
