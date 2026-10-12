@@ -41,3 +41,5 @@ Next implementation: named KMD parent-chain adapter support, when authorized.
 
 The public-tree check is a practical payload check, not a blanket license clearance.
 See the preserved upstream license scopes and THIRD_PARTY.md.
+
+Fresh isolated repository configure/build passed (1,230 build steps, Windows i686, modern renderer). Executable --version passed. Reused the existing local Clang20/SDK toolchain and Python environment; a pristine-machine setup/install has not been tested. No additional gameplay claim was needed for this repository migration. Build SHA-256: `786aa92bce3188efcf37eee7faa04b470baf55f8c5a6741d04ef2705a5cc516b`.
