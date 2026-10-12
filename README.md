@@ -1,6 +1,6 @@
 # Metal Gear Solid: Reintegrated
 
-![Metal Gear Solid: Reintegrated — tactical banner](assets/branding/reintegrated-tactical.png)
+![Metal Gear Solid: Reintegrated](assets/branding/reintegrated-clean.svg)
 
 An experimental fork of [RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral)
 focused on portability and optional enhancements for PlayStation **Metal Gear Solid Integral**.
@@ -13,6 +13,10 @@ have executed on x86-64 and emulated ARM64; full 64-bit recovered-game execution
 is not established. The earlier hybrid project is a separate foundation.
 
 ## Build and play
+
+![Reintegrated title screen with optional scanlines](assets/screenshots/title-screen.jpg)
+
+Title-screen capture from our Windows candidate with optional scanlines enabled.
 
 Use PowerShell 7, Python 3.11+, Git, and Visual Studio C++/Clang x86 tools plus a
 Windows SDK. See [upstream setup details](docs/UPSTREAM_README.md#build).
