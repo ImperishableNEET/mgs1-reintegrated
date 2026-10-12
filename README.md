@@ -12,6 +12,13 @@ Windows/Linux x86-64 and ARM64 are portability goals. Selected component fixture
 have executed on x86-64 and emulated ARM64; full 64-bit recovered-game execution
 is not established. The earlier hybrid project is a separate foundation.
 
+## Download
+
+[Experimental Windows x86 prerelease](https://github.com/ImperishableNEET/mgs1-reintegrated/releases/tag/v0.2.0-reintegrated.1)
+— download windows-x86.zip, extract the folder, and open MGS-Reintegrated.exe.
+Supply your own Integral CUE/BIN discs. This is a 32-bit Windows build; review
+the release notes for verification limits.
+
 ## Build and play
 
 ![Reintegrated title screen with optional scanlines](assets/screenshots/title-screen.jpg)

@@ -23,7 +23,7 @@ nearest-neighbor and clipped scanline candidates are not the chosen source.
 
 Repository milestone: reconstruct source from pins and patches, run asset-free
 import checks, compile in isolation, audit tracked payloads and record results.
-The GitHub fork and source branch are published. No binary release, full replay
+The GitHub fork and source branch are published. The experimental Windows x86 prerelease is published; no full replay
 or new architecture claim is implied.
 Next implementation: named KMD parent-chain adapter support, when authorized.
 
@@ -38,7 +38,7 @@ Next implementation: named KMD parent-chain adapter support, when authorized.
 - Public-tree audit excludes game payloads/private settings and checks local paths.
   The two reviewed large inherited text files are stage inventory metadata and
   synthetic pocket-back fixtures, not bundled disc files.
-- Inherited workflow is disabled. Executable publication is pending; local candidate packaging is verified.
+- Inherited workflow is disabled. Experimental executable publication and local candidate packaging are complete.
 
 The public-tree check is a practical payload check, not a blanket license clearance.
 See the preserved upstream license scopes and THIRD_PARTY.md.
@@ -70,6 +70,14 @@ windowed fullscreen. Exclusive fullscreen is unavailable in this backend; the
 previous hybrid Direct3D11/exclusive evidence is not transferable.
 
 Local output includes player ZIP, matching symbols and corresponding MPL source
-ZIP, with SHA256SUMS. Retail payloads/private saves are excluded. No GitHub binary
-release has been created. Smallest next task: user smoke/listening/controller
-review of this candidate, then decide whether to publish an experimental download.
+ZIP, with SHA256SUMS. Retail payloads/private saves are excluded. The user authorized and published the experimental Windows prerelease.
+Smallest next task: user smoke/listening/controller review of the published package.
+
+
+Published [0.2.0-reintegrated.1](https://github.com/ImperishableNEET/mgs1-reintegrated/releases/tag/v0.2.0-reintegrated.1)
+from 7f80090ce25a03df5908dd5eeb65dec92ab562e8. This final package enables
+Triangle Codec turbo by default in user launchers with a persisted GUI opt-out;
+engine/validation defaults remain original. Launcher settings checks and unpacked
+package checks passed. Four release assets were uploaded and their sizes verified;
+the tag matches the package source commit. The Dock check above belongs to the
+preceding readiness candidate, not a new full replay of this launcher-only revision.
