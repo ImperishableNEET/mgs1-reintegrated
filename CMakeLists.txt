@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(MGSIntegralNative VERSION 0.2.0 LANGUAGES C CXX)
-set(MGS_RELEASE_VERSION "0.2.0-alpha.1" CACHE STRING "Release version")
+set(MGS_RELEASE_VERSION "0.2.0-reintegrated.1" CACHE STRING "Release version")
 set(MGS_BUILD_COMMIT "local" CACHE STRING "Source commit")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 configure_file(include/mgs_build.h.in mgs_build.h @ONLY)
@@ -74,7 +74,7 @@ if(mgs_godot_scene)
     target_include_directories(mgs-integral-native PRIVATE renderers/godot/native)
 endif()
 target_link_options(mgs-integral-native PRIVATE -Xlinker /errorlimit:0)
-psyz_title(mgs-integral-native "RE:INTEGRAL")
+psyz_title(mgs-integral-native "Metal Gear Solid: Reintegrated")
 # Supply UAC in app.manifest; LLD's default UAC merge corrupts its namespaces.
 target_link_options(mgs-integral-native PRIVATE
     "-Wl,/manifest:embed" "-Wl,/manifestuac:no"

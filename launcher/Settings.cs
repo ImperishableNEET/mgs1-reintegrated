@@ -13,9 +13,10 @@ namespace ReIntegral
         public string DiscTwo = "";
         public string TextPack = "";
         public string VoicePack = "";
-        public string Resolution = "1280x720";
-        public bool Widescreen = true;
+        public string Resolution = "640x480";
+        public bool Widescreen;
         public bool Fullscreen;
+        public bool Scanlines;
         public bool TextureCorrection;
         public bool GeometryPrecision;
         public bool DepthBuffer;

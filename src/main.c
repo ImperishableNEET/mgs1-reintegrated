@@ -401,7 +401,7 @@ static int ParseOptions(StartupOptions *options, int argc, char **argv)
 
 static void PrintUsage(FILE *stream)
 {
-    fputs("RE:INTEGRAL " MGS_RELEASE_VERSION " (" MGS_BUILD_COMMIT ")\n"
+    fputs("Metal Gear Solid: Reintegrated " MGS_RELEASE_VERSION " (" MGS_BUILD_COMMIT ")\n"
           "Usage: mgs-integral-native --disc <Integral disc.cue> [options]\n"
           "  --version | --check-disc 1|2 <disc.cue> (no game boot)\n"
           "  --widescreen --resolution WIDTHxHEIGHT --fullscreen --debug-overlay\n"
@@ -428,7 +428,7 @@ int main(int argc, char **argv)
     if (argc == 3 && strcmp(argv[1], "--check-language") == 0)
         return MgsLanguageInspect(argv[2]) ? 0 : 2;
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
-        puts("RE:INTEGRAL " MGS_RELEASE_VERSION " (" MGS_BUILD_COMMIT ")");
+        puts("Metal Gear Solid: Reintegrated " MGS_RELEASE_VERSION " (" MGS_BUILD_COMMIT ")");
         return 0;
     }
     if (argc == 4 && strcmp(argv[1], "--check-disc") == 0) {
@@ -508,7 +508,7 @@ int main(int argc, char **argv)
         Psyz_AudioPause();
         puts("[input] Fast replay: presentation audio muted; simulated sound and interrupts continue.");
     }
-    printf("[native] RE:INTEGRAL " MGS_RELEASE_VERSION " (" MGS_BUILD_COMMIT "); stage: %s\n", options.stage);
+    printf("[native] Metal Gear Solid: Reintegrated " MGS_RELEASE_VERSION " (" MGS_BUILD_COMMIT "); stage: %s\n", options.stage);
     Psyz_SetVSyncCb(OnVSync);
     return mgs_main();
 }

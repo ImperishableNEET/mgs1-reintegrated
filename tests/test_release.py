@@ -82,7 +82,7 @@ def check_package(package: Path, ui: bool):
         if ui:
             subprocess.run(
                 [
-                    str(executable.with_name("RE-INTEGRAL.exe")),
+                    str(executable.with_name("MGS-Reintegrated.exe")),
                     "--smoke-ui",
                     "--data-dir",
                     str(directory / "profile ü 日本語"),
@@ -96,7 +96,7 @@ def check_package(package: Path, ui: bool):
 
 
 def check_sources(package: Path, version: str):
-    source = package.with_name(f"reintegral-{version}-mpl-source.zip")
+    source = package.with_name(f"reintegrated-{version}-mpl-source.zip")
     with zipfile.ZipFile(source) as archive:
         names = {name.replace("\\", "/") for name in archive.namelist()}
         for required in (

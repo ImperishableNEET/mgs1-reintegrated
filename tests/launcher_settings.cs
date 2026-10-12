@@ -37,19 +37,26 @@ internal static class LauncherSettingsTest
         var value = Settings.Load(path);
         Require(!value.Invulnerable && !value.BonusItems && !value.AutoCard, "Gameplay aids must default off");
         Require(!value.FastLoading, "Experimental fast loading must default off");
+        Require(!value.Scanlines, "Optional scanlines must default off");
+        Require(value.Resolution == "640x480" && !value.Widescreen,
+            "New profiles must default to the original display format");
         Require(!value.TextureCorrection && !value.GeometryPrecision && !value.DepthBuffer,
             "Experimental graphics must default off");
         value.DiscOne = "C:\\日本語\\disc 1.cue";
+        value.Resolution = "1920x1080";
+        value.Widescreen = true;
         value.TextPack = "C:\\my languages\\german.mgslang";
         value.VoicePack = "C:\\my languages\\english.mgslang";
         value.Advanced = "--mods-root \"C:\\my mods\"";
         value.Save(path);
         value.Fullscreen = true;
+        value.Scanlines = true;
         value.FastLoading = true;
         value.TextureCorrection = value.GeometryPrecision = value.DepthBuffer = true;
         value.Save(path);
         var restored = Settings.Load(path);
-        Require(restored.DiscOne == value.DiscOne && restored.Advanced == value.Advanced && restored.Fullscreen,
+        Require(restored.DiscOne == value.DiscOne && restored.Advanced == value.Advanced && restored.Fullscreen && restored.Scanlines &&
+            restored.Resolution == value.Resolution && restored.Widescreen,
             "Settings round-trip or replacement failed");
         Require(restored.TextureCorrection && restored.GeometryPrecision && restored.DepthBuffer,
             "Graphics settings did not round-trip");

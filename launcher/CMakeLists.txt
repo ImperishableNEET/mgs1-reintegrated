@@ -4,16 +4,16 @@ set(launcher_sources "${CMAKE_CURRENT_SOURCE_DIR}/Launcher.cs"
     "${CMAKE_CURRENT_SOURCE_DIR}/Settings.cs" "${CMAKE_CURRENT_SOURCE_DIR}/GameLaunch.cs"
     "${CMAKE_CURRENT_SOURCE_DIR}/LanguageImport.cs" "${CMAKE_CURRENT_SOURCE_DIR}/LanguageImportDialog.cs"
     "${CMAKE_CURRENT_BINARY_DIR}/BuildInfo.cs")
-set(launcher_output "${CMAKE_BINARY_DIR}/RE-INTEGRAL.exe")
+set(launcher_output "${CMAKE_BINARY_DIR}/MGS-Reintegrated.exe")
 file(TO_NATIVE_PATH "${launcher_output}" launcher_native_output)
 file(TO_NATIVE_PATH "${CMAKE_CURRENT_BINARY_DIR}/BuildInfo.cs" launcher_build_info)
-file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/assets/branding/re-integral-logo.png" launcher_logo)
+file(TO_NATIVE_PATH "${PROJECT_SOURCE_DIR}/assets/branding/reintegrated-clean.png" launcher_logo)
 add_custom_command(OUTPUT "${launcher_output}"
     COMMAND "${MGS_CSC}" /nologo /target:winexe /platform:x86 /optimize+
         /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Xml.dll
         /win32manifest:app.manifest "/resource:${launcher_logo},logo.png"
         "/out:${launcher_native_output}" Launcher.cs Settings.cs GameLaunch.cs LanguageImport.cs LanguageImportDialog.cs "${launcher_build_info}"
-    DEPENDS ${launcher_sources} app.manifest "${PROJECT_SOURCE_DIR}/assets/branding/re-integral-logo.png"
+    DEPENDS ${launcher_sources} app.manifest "${PROJECT_SOURCE_DIR}/assets/branding/reintegrated-clean.png"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" VERBATIM)
 add_custom_target(reintegral_launcher ALL DEPENDS "${launcher_output}")
 set(importer_sources import_language.py import_content.py list_assets.py language_assets.py

@@ -1,17 +1,12 @@
-# Reintegrated README banners
+# Reintegrated branding
 
-Two generated title treatments, each 2048 x 683 pixels. The tactical variant is
-currently used in the main README; the Codec variant is an alternative.
+The accepted README logo is [reintegrated-clean.png](reintegrated-clean.png),
+with editable composition in [reintegrated-clean.svg](reintegrated-clean.svg).
+It uses MGS1: above REINTEGRATED and UNOFFICIAL SOURCE PORT below.
+The hero lettering retains the original generated shapes; an SVG filter removes
+white cutout residue. Supporting lettering is outlined angular italic geometry.
+The transparent PNG is the README and launcher asset.
 
-## Tactical — black, ivory and red
-
-![Tactical banner](reintegrated-tactical.png)
-
-## Codec — green phosphor and reconnecting paths
-
-![Codec banner](reintegrated-codec.png)
-
-Created using the built-in image-generation tool. Exact prompts are preserved in
-[reintegrated-prompts.json](reintegrated-prompts.json). These are generated fan-project
-branding, not screenshots or official Konami artwork. Existing upstream branding
-has been retained separately. Inspected both for spelling, composition and legibility.
+The earlier tactical and Codec banners are archived alternatives, not current defaults.
+Their built-in generation prompts are in reintegrated-prompts.json.
+Upstream logo files and notices remain preserved separately.

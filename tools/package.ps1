@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$BuildDirectory,
-    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?$')][string]$Version = '0.2.0-alpha.1',
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?$')][string]$Version = '0.2.0-reintegrated.1',
     [string]$OutputDirectory = 'build/packages'
 )
 
@@ -13,21 +13,24 @@ if (-not (Select-String -LiteralPath (Join-Path $build 'CMakeCache.txt') -Patter
     throw 'Release packaging requires a RelWithDebInfo build.'
 }
 $output = [IO.Path]::GetFullPath($OutputDirectory, $project)
-$name = "reintegral-$Version-windows-x86"
+$name = "reintegrated-$Version-windows-x86"
 $staging = Join-Path $output ($name + '-' + [Guid]::NewGuid().ToString('N'))
 $package = Join-Path $staging $name
 New-Item -ItemType Directory -Path $package -Force | Out-Null
-foreach ($file in @('RE-INTEGRAL.exe', 'mgs-integral-native.exe')) {
+foreach ($file in @('MGS-Reintegrated.exe', 'mgs-integral-native.exe')) {
     Copy-Item -LiteralPath (Join-Path $build $file) -Destination $package
 }
+foreach ($shortcut in @('Play.ps1', 'Play.cmd', 'Play-Scanlines.cmd')) {
+    Copy-Item -LiteralPath (Join-Path $project $shortcut) -Destination $package
+}
 Copy-Item -LiteralPath (Join-Path $build 'language-importer') -Destination $package -Recurse
-if (Get-ChildItem -LiteralPath $package -Recurse -File | Where-Object { $_.Extension -in @('.mgslang', '.bin', '.cue', '.iso', '.dat', '.dir') }) {
+if (Get-ChildItem -LiteralPath $package -Recurse -File | Where-Object { $_.Extension -in @('.mgslang', '.bin', '.cue', '.iso', '.dat', '.dir', '.mcr', '.mcd', '.sav') }) {
     throw 'Retail resource files must not be included in a player package.'
 }
 $versionText = & (Join-Path $package 'mgs-integral-native.exe') --version
-if ($LASTEXITCODE -ne 0 -or $versionText -notlike "RE:INTEGRAL $Version (*)") { throw 'Executable version does not match package version.' }
+if ($LASTEXITCODE -ne 0 -or $versionText -notlike "Metal Gear Solid: Reintegrated $Version (*)") { throw 'Executable version does not match package version.' }
 Copy-Item -LiteralPath (Join-Path $project 'LICENSE') -Destination $package
-Copy-Item -LiteralPath (Join-Path $project 'docs/ALPHA.md') -Destination (Join-Path $package 'START-HERE.md')
+Copy-Item -LiteralPath (Join-Path $project 'docs/PLAYER_PACKAGE.md') -Destination (Join-Path $package 'START-HERE.md')
 Copy-Item -LiteralPath (Join-Path $project 'docs/THIRD_PARTY.md') -Destination $package
 Copy-Item -LiteralPath (Join-Path $project 'docs/LANGUAGES.md') -Destination $package
 Copy-Item -LiteralPath (Join-Path $project 'docs/REGIONAL_LANGUAGE_RESOURCES.md') -Destination $package
@@ -57,7 +60,7 @@ $commit = & git -C $project rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify package source commit.' }
 [ordered]@{ version = $Version; commit = $commit; configuration = 'RelWithDebInfo'; architecture = 'x86'; engine = $versionText } |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $package 'build-info.json') -Encoding utf8
-$sourceName = "reintegral-$Version-mpl-source.zip"
+$sourceName = "reintegrated-$Version-mpl-source.zip"
 $sourceRoot = Join-Path $staging 'mpl-source'
 New-Item -ItemType Directory -Path $sourceRoot | Out-Null
 foreach ($part in @('platform', 'psyz')) {
@@ -65,12 +68,12 @@ foreach ($part in @('platform', 'psyz')) {
 }
 Copy-Item -LiteralPath (Join-Path $project 'renderers/modern') -Destination (Join-Path $sourceRoot 'modern-renderer') -Recurse
 @"
-RE:INTEGRAL $Version; source commit $commit
+Metal Gear Solid: Reintegrated $Version; source commit $commit
 Modified MPL-covered source is in the accompanying $sourceName release asset.
 It includes the platform runtime and modern renderer sources and shaders.
 It is available under MPL 2.0; see licenses/MPL-2.0.txt.
 Build scripts, pinned upstream revisions and all patches:
-https://github.com/Drommedhar/mgs-reintegral/tree/$commit
+https://github.com/ImperishableNEET/mgs1-reintegrated/tree/$commit
 The project MIT license covers only the original contributions described in LICENSE.
 Other components retain their own notices and documented license scopes.
 "@ | Set-Content -LiteralPath (Join-Path $package 'SOURCE-AND-NOTICES.txt') -Encoding utf8
@@ -78,10 +81,10 @@ Compress-Archive -LiteralPath $package -DestinationPath (Join-Path $output "$nam
 Compress-Archive -Path (Join-Path $sourceRoot '*') -DestinationPath (Join-Path $output $sourceName) -Force
 $pdb = Join-Path $build 'mgs-integral-native.pdb'
 if (-not (Test-Path -LiteralPath $pdb)) { throw 'RelWithDebInfo package requires matching PDB symbols.' }
-Compress-Archive -LiteralPath $pdb -DestinationPath (Join-Path $output "reintegral-$Version-symbols.zip") -Force
-$hashes = foreach ($file in @("$name.zip", $sourceName, "reintegral-$Version-symbols.zip")) {
+Compress-Archive -LiteralPath $pdb -DestinationPath (Join-Path $output "reintegrated-$Version-symbols.zip") -Force
+$hashes = foreach ($file in @("$name.zip", $sourceName, "reintegrated-$Version-symbols.zip")) {
     $hash = (Get-FileHash -LiteralPath (Join-Path $output $file) -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $file"
 }
-$hashes | Set-Content -LiteralPath (Join-Path $output "reintegral-$Version-SHA256SUMS.txt") -Encoding ascii
+$hashes | Set-Content -LiteralPath (Join-Path $output "reintegrated-$Version-SHA256SUMS.txt") -Encoding ascii
 Write-Host "Release files ready in $output"

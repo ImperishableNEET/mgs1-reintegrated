@@ -14,7 +14,7 @@ namespace ReIntegral
         private readonly TextBox discOne = new TextBox(), discTwo = new TextBox();
         private readonly TextBox textPack = new TextBox(), voicePack = new TextBox();
         private readonly ComboBox resolution = new ComboBox(), mantis = new ComboBox();
-        private readonly CheckBox wide = new CheckBox(), fullscreen = new CheckBox();
+        private readonly CheckBox wide = new CheckBox(), fullscreen = new CheckBox(), scanlines = new CheckBox();
         private readonly CheckBox textureCorrection = new CheckBox();
         private readonly CheckBox geometryPrecision = new CheckBox(), depthBuffer = new CheckBox();
         private readonly CheckBox bonus = new CheckBox(), invulnerable = new CheckBox();
@@ -44,7 +44,7 @@ namespace ReIntegral
             instanceLock = new FileStream(Path.Combine(dataDirectory, "launcher.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             executable = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mgs-integral-native.exe");
             settingsPath = Path.Combine(dataDirectory, "settings.xml");
-            Text = "RE:INTEGRAL — " + BuildInfo.Version;
+            Text = "Metal Gear Solid: Reintegrated — " + BuildInfo.Version;
             Font = new Font("Segoe UI", 9F);
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(720, 665);
@@ -130,6 +130,7 @@ namespace ReIntegral
             page.Controls.Add(resolution);
             CheckAt(page, wide, "Widescreen (expand the scene view)", 237);
             CheckAt(page, fullscreen, "Fullscreen", 267);
+            CheckAt(page, scanlines, "Scanlines (optional display effect)", 297);
         }
 
         private void BuildGraphics()
@@ -225,7 +226,7 @@ namespace ReIntegral
             discOne.Text = value.DiscOne; discTwo.Text = value.DiscTwo;
             textPack.Text = value.TextPack; voicePack.Text = value.VoicePack;
             resolution.Text = value.Resolution; wide.Checked = value.Widescreen;
-            fullscreen.Checked = value.Fullscreen; bonus.Checked = value.BonusItems;
+            fullscreen.Checked = value.Fullscreen; scanlines.Checked = value.Scanlines; bonus.Checked = value.BonusItems;
             textureCorrection.Checked = value.TextureCorrection;
             geometryPrecision.Checked = value.GeometryPrecision;
             depthBuffer.Checked = value.DepthBuffer;
@@ -240,6 +241,7 @@ namespace ReIntegral
             return new Settings { DiscOne = AbsolutePath(discOne.Text), DiscTwo = AbsolutePath(discTwo.Text),
                 TextPack = AbsolutePath(textPack.Text), VoicePack = AbsolutePath(voicePack.Text),
                 Resolution = resolution.Text.Trim(), Widescreen = wide.Checked, Fullscreen = fullscreen.Checked,
+                Scanlines = scanlines.Checked,
                 TextureCorrection = textureCorrection.Checked,
                 GeometryPrecision = geometryPrecision.Checked, DepthBuffer = depthBuffer.Checked,
                 BonusItems = bonus.Checked, Invulnerable = invulnerable.Checked, AutoCard = autoCard.Checked,
@@ -283,7 +285,7 @@ namespace ReIntegral
             catch (Exception error)
             {
                 status.Text = "Setup needs attention.";
-                MessageBox.Show(this, error.Message, "RE:INTEGRAL", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, error.Message, "Metal Gear Solid: Reintegrated", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -297,9 +299,14 @@ namespace ReIntegral
         {
             string path = Path.Combine(dataDirectory, "logs", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + ".log");
             log = new StreamWriter(path, true) { AutoFlush = true };
-            log.WriteLine("RE:INTEGRAL " + BuildInfo.Version + " (" + BuildInfo.Commit + ")");
+            log.WriteLine("Metal Gear Solid: Reintegrated " + BuildInfo.Version + " (" + BuildInfo.Commit + ")");
             log.WriteLine(activeArguments);
-            game = new Process { StartInfo = GameLaunch.StartInfo(executable, activeArguments, dataDirectory) };
+            var startInfo = GameLaunch.StartInfo(executable, activeArguments, dataDirectory);
+            startInfo.EnvironmentVariables["REI_ENGLISH_CAPTIONS"] = "1";
+            startInfo.EnvironmentVariables["REI_ORIGINAL_RES"] = "1";
+            startInfo.EnvironmentVariables["REI_REINTEGRATED_TITLE"] = "1";
+            startInfo.EnvironmentVariables["REI_SCANLINES"] = scanlines.Checked ? "1" : "0";
+            game = new Process { StartInfo = startInfo };
             game.OutputDataReceived += WriteLog;
             game.ErrorDataReceived += WriteLog;
             try { game.Start(); }
@@ -357,14 +364,14 @@ namespace ReIntegral
                 if (rapidRestarts < 3) { Guard(StartGame); return; }
             }
             status.Text = code == 0 ? "Game closed. Ready to play again." : "Game exited with code " + code + ". Open logs for details.";
-            if (code != 0) MessageBox.Show(this, status.Text, "RE:INTEGRAL", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (code != 0) MessageBox.Show(this, status.Text, "Metal Gear Solid: Reintegrated", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private void ClosingLauncher(object sender, FormClosingEventArgs args)
         {
             if (game == null && !validating) return;
             args.Cancel = true;
-            MessageBox.Show(this, "Close the game before closing the launcher.", "RE:INTEGRAL");
+            MessageBox.Show(this, "Close the game before closing the launcher.", "Metal Gear Solid: Reintegrated");
         }
 
         private void ShowCommand()
@@ -392,7 +399,7 @@ namespace ReIntegral
         private void Guard(Action action)
         {
             try { action(); }
-            catch (Exception error) { MessageBox.Show(this, error.Message, "RE:INTEGRAL", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            catch (Exception error) { MessageBox.Show(this, error.Message, "Metal Gear Solid: Reintegrated", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
     }
 
@@ -405,17 +412,17 @@ namespace ReIntegral
             Application.SetCompatibleTextRenderingDefault(false);
             try
             {
-                string data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RE-INTEGRAL");
+                string data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MGS-Reintegrated");
                 bool smoke = args.Length == 3 && args[0] == "--smoke-ui" && args[1] == "--data-dir";
                 if (smoke) data = Path.GetFullPath(args[2]);
-                else if (args.Length != 0) throw new ArgumentException("Launch RE-INTEGRAL.exe without arguments to configure the game.");
+                else if (args.Length != 0) throw new ArgumentException("Launch MGS-Reintegrated.exe without arguments to configure the game.");
                 using (var launcher = new Launcher(data, smoke)) Application.Run(launcher);
                 return 0;
             }
             catch (Exception error)
             {
                 MessageBox.Show(error.Message + "\n\nClose any other launcher instance. If settings.xml is damaged, move it aside and try again.",
-                    "RE:INTEGRAL startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Metal Gear Solid: Reintegrated startup", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 1;
             }
         }

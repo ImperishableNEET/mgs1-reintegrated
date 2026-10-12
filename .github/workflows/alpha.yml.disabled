@@ -91,7 +91,7 @@ jobs:
         if: inputs.publish
         run: |
           $assets = @(Get-ChildItem -LiteralPath build/packages -File | Select-Object -ExpandProperty FullName)
-          gh release create "v$env:RELEASE_VERSION" @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --draft --title "RE:INTEGRAL $env:RELEASE_VERSION" --notes-file docs/ALPHA.md
+          gh release create "v$env:RELEASE_VERSION" @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --draft --title "Reintegrated $env:RELEASE_VERSION" --notes-file docs/ALPHA.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed; any partial release remains a draft.' }
           gh release edit "v$env:RELEASE_VERSION" --repo $env:GITHUB_REPOSITORY --draft=false
           if ($LASTEXITCODE -ne 0) { throw 'Could not publish the completed draft.' }
