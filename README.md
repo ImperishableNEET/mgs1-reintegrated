@@ -1,6 +1,6 @@
 # Metal Gear Solid: Reintegrated
 
-![MGS1: Reintegrated](assets/branding/reintegrated-clean.svg)
+![MGS1: Reintegrated](assets/branding/reintegrated-clean.png)
 
 An experimental fork of [RE:INTEGRAL](https://github.com/Drommedhar/mgs-reintegral)
 focused on portability and optional enhancements for PlayStation **Metal Gear Solid Integral**.
