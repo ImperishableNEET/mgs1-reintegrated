@@ -92,7 +92,22 @@
         "patches/mgs-precise-subdivision.patch",
         "patches/mgs-loading-pacing.patch",
         "patches/mgs-language-packs.patch",
-        "patches/reintegrated-mgs.patch"
+        "patches/reintegrated-mgs.patch",
+        "patches/mgs-near-zones-capacity.patch",
+        "patches/mgs-mission-log-fast.patch",
+        "patches/mgs-codec-buffer-aspect.patch",
+        "patches/mgs-hud-corner-anchors.patch",
+        "patches/mgs-codec-hires-sidecar.patch",
+        "patches/mgs-jimaku-hires-sidecar.patch",
+        "patches/mgs-radio-contact-hires-sidecar.patch",
+        "patches/mgs-save-load-hires-sidecar.patch",
+        "patches/mgs-codec-static-noise.patch",
+        "patches/mgs-first-person-move-shoot.patch",
+        "patches/mgs-shadow-depth-order.patch",
+        "patches/mgs-scripted-gas-fatal.patch",
+        "patches/mgs-electric-floor-depth-order.patch",
+        "patches/mgs-office-floor-depth-order.patch",
+        "patches/mgs-mantis-installed-memory.patch"
       ]
     },
     {
@@ -124,7 +139,9 @@
         "patches/psyz-godot-command-transport.patch",
         "patches/psyz-projected-geometry.patch",
         "patches/psyz-audio-output-suppression.patch",
-        "patches/reintegrated-psyz.patch"
+        "patches/reintegrated-psyz.patch",
+        "patches/psyz-ordered-geometry.patch",
+        "patches/psyz-stable-controller-slots.patch"
       ]
     },
     {

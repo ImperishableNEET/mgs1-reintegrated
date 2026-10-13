@@ -7,6 +7,8 @@
 
 static PsyzOverlayEventCB_SDL3 previous_event;
 static SDL_JoystickID chord_controller;
+static unsigned mantis_deaths;
+static int death_active, shortcut_used;
 
 static int PortShortcut(const SDL_Event *event)
 {
@@ -36,12 +38,35 @@ static int PortShortcut(const SDL_Event *event)
     return 1;
 }
 
+void MgsControllerPortsUpdate(void)
+{
+    const char *area = GM_GetArea(0);
+    int mantis = area && !strcmp(area, "s07b");
+    int dying = mantis && GM_GameOverTimer != 0;
+    if (!mantis) {
+        mantis_deaths = 0;
+        death_active = 0;
+    } else {
+        if (dying && !death_active &&
+            (GM_PlayerStatus & PLAYER_SECOND_AVAILABLE) && mantis_deaths < 2)
+            ++mantis_deaths;
+        death_active = dying;
+    }
+    /* The platform consumes device events after this callback. Limit automatic
+     * replacement routing to scenes that support the second controller. */
+    SDL_SetHint("REI_CONTROLLER_IDENTITY_PORTS",
+        !MgsInputMovieReplaying() && (GM_PlayerStatus & PLAYER_SECOND_AVAILABLE)
+            ? "1" : "0");
+}
+
 static void ControllerEvent(const SDL_Event *event)
 {
+    MgsControllerPortsUpdate();
     if (previous_event)
         previous_event(event);
     if (MgsInputMovieReplaying() || !PortShortcut(event))
         return;
+    shortcut_used = 1;
     int swapped = !Psyz_PadsHostPort(0);
     Psyz_PadsSetHostPortSwap(swapped);
     printf("[input] Primary controller and keyboard moved to port %d. F2 or L3+R3 switches ports.\n",
@@ -52,19 +77,25 @@ void MgsControllerPortsInit(void)
 {
     Psyz_PadsSetHostPortSwap(0);
     chord_controller = 0;
+    mantis_deaths = 0;
+    death_active = shortcut_used = 0;
+    SDL_SetHint("REI_CONTROLLER_IDENTITY_PORTS", "0");
     previous_event = Psyz_OverlayEvent_SDL3(ControllerEvent);
 }
 
 const char *MgsControllerPortsHint(void)
 {
     int available = (GM_PlayerStatus & PLAYER_SECOND_AVAILABLE) != 0;
+    if (!shortcut_used && mantis_deaths < 2)
+        return "";
     if (MgsInputMovieReplaying()) {
         if (!available)
             return "";
         return (GM_PlayerStatus & PLAYER_SECOND_CONTROLLER) ?
             "REPLAY - CONTROLLER PORT 2" : "REPLAY - CONTROLLER PORT 1";
     }
-    if (Psyz_PadsHostPort(0))
+    if (Psyz_PadsHostPort(0) ||
+        (available && (GM_PlayerStatus & PLAYER_SECOND_CONTROLLER)))
         return "CONTROLLER PORT 2\nF2/L3+R3: RETURN TO PORT 1";
     return available ? "CONTROLLER PORT 1\nF2/L3+R3: SWITCH TO PORT 2" : "";
 }

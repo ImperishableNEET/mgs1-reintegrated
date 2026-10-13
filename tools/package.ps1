@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][string]$BuildDirectory,
     [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?$')][string]$Version = '0.2.0-reintegrated.1',
-    [string]$OutputDirectory = 'build/packages'
+    [string]$OutputDirectory = 'build/packages',
+    [Parameter(Mandatory)][string]$FontDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -24,6 +25,12 @@ foreach ($shortcut in @('Play.ps1', 'Play.cmd', 'Play-Scanlines.cmd')) {
     Copy-Item -LiteralPath (Join-Path $project $shortcut) -Destination $package
 }
 Copy-Item -LiteralPath (Join-Path $build 'language-importer') -Destination $package -Recurse
+$fontOutput = Join-Path $package 'fonts'
+New-Item -ItemType Directory -Path $fontOutput | Out-Null
+foreach ($fontFile in @('texgyreheros_regular_ascii8x_coverage.bmp', 'GUST-FONT-LICENSE.txt', 'LPPL-1.3c.txt')) {
+    Copy-Item -LiteralPath (Join-Path $FontDirectory $fontFile) -Destination $fontOutput
+}
+Copy-Item -LiteralPath (Join-Path $project 'licenses/Heros-atlas-notice.txt') -Destination (Join-Path $fontOutput 'README.txt')
 if (Get-ChildItem -LiteralPath $package -Recurse -File | Where-Object { $_.Extension -in @('.mgslang', '.bin', '.cue', '.iso', '.dat', '.dir', '.mcr', '.mcd', '.sav') }) {
     throw 'Retail resource files must not be included in a player package.'
 }

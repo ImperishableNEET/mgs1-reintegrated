@@ -1,0 +1,13 @@
+--- a/psyz/include/psyz/gpu.h
++++ b/psyz/include/psyz/gpu.h
+@@ -13,7 +13,9 @@
+ #endif
+ 
+ /* Optional projected geometry, read synchronously when a packet is submitted.
+- * The callback returns zero when the XY word has no matching projection. */
++ * The callback returns zero when the XY word has no matching projection, or
++ * VALID optionally combined with ORDERED for effects that rely on draw order. */
++enum { PSYZ_GEOMETRY_VALID = 1, PSYZ_GEOMETRY_ORDERED = 2 };
+ typedef struct { float x, y, depth; } PsyzProjectedVertex;
+ typedef int (*PsyzGeometryCallback)(const void *xy, PsyzProjectedVertex *vertex);
+ int Psyz_GpuConfigureGeometry(PsyzGeometryCallback callback, int textures, int precision, int depth);

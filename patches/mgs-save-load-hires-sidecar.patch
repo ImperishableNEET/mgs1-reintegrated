@@ -1,0 +1,42 @@
+diff --git a/source/menu/datasave.c b/source/menu/datasave.c
+index 831e391..4982f63 100644
+--- a/source/menu/datasave.c
++++ b/source/menu/datasave.c
+@@ -13,6 +13,9 @@
+ #include "memcard/memcard.h"
+ #include "mts/mts.h"
+ #include "mts/taskid.h"
++#ifdef MGS_NATIVE
++#include "mgs_hires_font.h"
++#endif
+ 
+ //------------------------------------------------------------------------------
+ // gp
+@@ -1103,6 +1106,11 @@ static void show_message( MenuWork *work, u_long *ot, SELECT_INFO *info )
+     setXY0( sprt, SAVE_MES_X - kcb->max_width / 2, SAVE_MES_Y );
+     setUV0( sprt, 0, 4 );
+     setWH( sprt, 252, 14 );
++#ifdef MGS_NATIVE
++    MgsHiResFontRegisterSpriteRegion(&sprt->r0, kcb,
++                                     sprt->x0, sprt->y0, sprt->w, sprt->h,
++                                     sprt->u0, sprt->v0 - 4);
++#endif
+     addPrim( ot, sprt );
+ }
+ // clang-format on
+@@ -1361,6 +1369,15 @@ STATIC void menu_radio_do_file_mode_save_memcard_8004B0A0(MenuWork *work, u_long
+         setWH(pSprt, 128, 14);
+         setXY0(pSprt, s8, s6 + 2);
+ 
++#ifdef MGS_NATIVE
++        /* The native bitmap is sampled four pixels below each 14-pixel
++         * row origin; the atlas keeps the complete authored cap height. */
++        MgsHiResFontRegisterSpriteRegion(&pSprt->r0, info->kcb,
++                                         pSprt->x0, pSprt->y0,
++                                         pSprt->w, pSprt->h,
++                                         pSprt->u0, pSprt->v0 - 4);
++#endif
++
+         addPrim(ot, pSprt);
+ 
+         _NEW_PRIM(pTpage, prim);

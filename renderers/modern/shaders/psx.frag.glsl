@@ -32,6 +32,14 @@ layout(set = 3, binding = 0) uniform FragmentParams {
 uvec2 resolveTexel() {
     float bias = (samplingFlags & 2u) != 0u ? 0.5 / renderScale : 0.5;
     vec2 uv = rawUV + (polygon != 0u ? vec2(bias) : vec2(0.0));
+    // Stabilize exact sprite texel ties across the two framebuffer origins.
+    // Snap only the two-float-step neighborhood of an integer at the HUD
+    // atlas's high UV coordinates; world and
+    // polygon sampling retain their existing rules.
+    if ((samplingFlags & 2u) != 0u && polygon == 0u) {
+        vec2 nearest = round(uv);
+        uv = mix(uv, nearest, lessThanEqual(abs(uv - nearest), vec2(1.0 / 32768.0)));
+    }
     uvec2 texel = uvec2(ivec2(floor(uv))) & uvec2(255u);
     return (texel & texWindow.xy) | texWindow.zw;
 }

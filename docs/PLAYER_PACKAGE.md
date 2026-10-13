@@ -25,9 +25,17 @@ available in the packaged SDL GPU backend; Ctrl+Alt+Enter reports this limitatio
 This Windows recovered-code candidate uses Direct3D 12. The earlier hybrid
 Direct3D 11 implementation is separate.
 
-Xbox Elite Series 2 and DualSense Edge, including hot swapping, were tested by
-the user on an earlier candidate. This package still needs physical-controller
-and listening review; no new full playthrough is claimed.
+The player cleared Mantis and confirmed DualSense Edge / Xbox controller hot
+swapping in this candidate. Disconnect either cable end, then connect the other
+controller. Same-controller USB socket changes remain reconnects. F2 or L3+R3
+explicitly switches virtual ports; the original statue alternative is retained.
+No full campaign playthrough is claimed. Remaining intermittent floor/shadow
+flicker is tracked for future renderer work.
+
+Installed-game Mantis memory reading defaults on for new launcher profiles;
+select Off to opt out. Saved explicit choices persist. Scanning reads bounded
+local file/folder names, plus Steam library configuration for paths only.
+Optional Sharp English text uses the bundled Heros atlas and adjacent notices.
 
 See THIRD_PARTY.md, LICENSE, SOURCE-AND-NOTICES.txt and the accompanying source
 archive for provenance and license scopes. Packaging is not a blanket license

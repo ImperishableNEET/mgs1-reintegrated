@@ -1,0 +1,33 @@
+diff --git a/source/menu/radiofacedraw.c b/source/menu/radiofacedraw.c
+index 4b9d0b6..ee82375 100644
+--- a/source/menu/radiofacedraw.c
++++ b/source/menu/radiofacedraw.c
+@@ -8,6 +8,9 @@
+ #include "libdg/libdg.h"
+ #include "menu/menuman.h"
+ #include "mts/taskid.h"
++#ifdef MGS_NATIVE
++#include "mgs_codec_noise.h"
++#endif
+ 
+ STATIC RECT rect_800AB6D8 = {1008, 432, 5, 20};
+ STATIC int  dword_800AB6E0 = 0;
+@@ -210,10 +213,14 @@ void menu_radio_draw_face_helper3_800487DC(menu_chara_struct *pStru, int idx)
+     rect.h = 89;
+ 
+ #ifdef MGS_NATIVE
+-    _Static_assert(sizeof(mgs_main_ram) >= 0x10000 + 31 * 0x2000 + 0x1000 + 26 * 89 * 2,
+-                   "Native RAM must cover the codec noise image");
+-    /* The original memory-noise effect samples the managed native game arena. */
+-    LoadImage(&rect, (u_long *)(mgs_main_ram + 0x10000 + (rand() % 32) * 0x2000 + GV_Clock * 0x1000));
++    _Alignas(4) static uint16_t noise[2][MGS_CODEC_NOISE_WORDS];
++    unsigned face = (unsigned)idx & 1u;
++    /* On PS1 this samples arbitrary RAM. The native arena's corresponding
++     * headroom is zero-filled, producing a dark portrait. Keep the original
++     * one rand() call, but fill its 8-bit portrait texture with live static. */
++    unsigned sample = (unsigned)(rand() % 32);
++    MgsCodecFillNoise(noise[face], sample, (unsigned)GV_Clock, face);
++    LoadImage(&rect, (u_long *)noise[face]);
+ #else
+     // TODO: the following code loads
+     // an image from a random area of the memory.

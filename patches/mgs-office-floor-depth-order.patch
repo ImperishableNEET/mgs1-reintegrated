@@ -1,0 +1,29 @@
+--- a/source/libdg/trans.c
++++ b/source/libdg/trans.c
+@@ -5,6 +5,7 @@
+ #include "libgv/libgv.h" // for GV_Clock
+ #ifdef MGS_NATIVE
+ #include "mgs_video.h"
++#include "mgs_ordered_model.h"
+ #include <stdint.h>
+ #include <string.h>
+ #endif
+@@ -501,6 +502,8 @@
+     DG_OBJ   *parent;
+ #ifdef MGS_NATIVE
+     POLY_GT4 *parent_packs;
++    /* Resolve once per channel; never retain a cache pointer across stage loads. */
++    const DG_DEF *office_floor = GV_GetCache(GV_CacheID(0xc762, 'k'));
+ #endif
+ 
+     work = (SCRATCH *)getScratchAddr(0);
+@@ -548,7 +551,8 @@
+ 
+             DG_TransObj(obj, idx
+ #ifdef MGS_NATIVE
+-                        , parent_packs, (objs->flag & DG_FLAG_NATIVE_ORDERED) != 0
++                        , parent_packs, (objs->flag & DG_FLAG_NATIVE_ORDERED) != 0 ||
++                          MgsOfficeFloorOrdered(office_floor, objs->def, model)
+ #endif
+                         );
+         }

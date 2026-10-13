@@ -1,0 +1,22 @@
+diff --git a/source/enemy/think.c b/source/enemy/think.c
+--- a/source/enemy/think.c
++++ b/source/enemy/think.c
+@@ -227,6 +227,6 @@ void s00a_command_800CAD84( WatcherWork *work )
+     HZD_ZON *zone2;
+     HZD_ZON *zone3;
+-    int unk[5]; //?
++    int unk[6]; // HZD_NearZones writes up to six entries.
+ 
+     ctrl = &work->control;
+     hzd = work->control.map->hzd;
+diff --git a/source/enemy/merylthink.c b/source/enemy/merylthink.c
+--- a/source/enemy/merylthink.c
++++ b/source/enemy/merylthink.c
+@@ -122,6 +122,6 @@ void s07a_meryl_unk_800DB590( WatcherWork *work )
+     HZD_ZON *zone2;
+     HZD_ZON *zone3;
+-    int unk[5]; //?
++    int unk[6]; // HZD_NearZones writes up to six entries.
+ 
+     ctrl = &work->control;
+     hzd = work->control.map->hzd;

@@ -37,7 +37,12 @@ internal static class LauncherSettingsTest
         var value = Settings.Load(path);
         Require(!value.Invulnerable && !value.BonusItems && !value.AutoCard, "Gameplay aids must default off");
         Require(!value.FastLoading, "Experimental fast loading must default off");
+        Require(!value.FirstPersonMoveShoot && GameLaunch.FirstPersonMoveShootEnvironment(value.FirstPersonMoveShoot) == "0",
+            "Integral first-person move/shoot must default off");
         Require(value.CodecTurbo, "User launcher Codec turbo must default on");
+        Require(value.MissionLogFast, "User launcher mission-log speedup must default on");
+        Require(value.MantisMemory == "installed", "New launcher profiles must use installed-game memory reading");
+        Require(GameLaunch.Arguments(value).Contains("--mantis-memory installed"), "Installed mode was not passed to the engine");
         Require(!value.Scanlines, "Optional scanlines must default off");
         Require(value.Resolution == "640x480" && !value.Widescreen,
             "New profiles must default to the original display format");
@@ -51,19 +56,27 @@ internal static class LauncherSettingsTest
         value.Advanced = "--mods-root \"C:\\my mods\"";
         value.Save(path);
         value.Fullscreen = true;
+        value.MantisMemory = "off";
         value.Scanlines = true;
         value.CodecTurbo = false;
+        value.MissionLogFast = false;
         value.FastLoading = true;
+        value.FirstPersonMoveShoot = true;
         value.TextureCorrection = value.GeometryPrecision = value.DepthBuffer = true;
         value.Save(path);
         var restored = Settings.Load(path);
+        Require(restored.MantisMemory == "off" && !GameLaunch.Arguments(restored).Contains("--mantis-memory"),
+            "Explicit memory-reading opt-out did not persist");
         Require(restored.DiscOne == value.DiscOne && restored.Advanced == value.Advanced && restored.Fullscreen && restored.Scanlines &&
             restored.Resolution == value.Resolution && restored.Widescreen,
             "Settings round-trip or replacement failed");
         Require(restored.TextureCorrection && restored.GeometryPrecision && restored.DepthBuffer,
             "Graphics settings did not round-trip");
         Require(!restored.CodecTurbo, "Codec turbo opt-out did not persist");
+        Require(!restored.MissionLogFast, "Mission-log opt-out did not persist");
         Require(restored.FastLoading, "Fast loading setting did not round-trip");
+        Require(restored.FirstPersonMoveShoot && GameLaunch.FirstPersonMoveShootEnvironment(restored.FirstPersonMoveShoot) == "1",
+            "Integral first-person move/shoot did not round-trip");
         Require(restored.TextPack == value.TextPack && restored.VoicePack == value.VoicePack,
             "Language selections did not round-trip");
         string languages = GameLaunch.Arguments(restored);
@@ -87,7 +100,12 @@ internal static class LauncherSettingsTest
             "--fullscreen", "--widescreen", "--texture-correction", "--geometry-precision", "--depth-buffer", "--fast-loading 1",
             "--stage s00a", "--frames 600", "--mantis-memory 42", settings.Advanced })
             Require(command.Contains(flag), "Missing option: " + flag);
-        foreach (string resolution in new[] { "3840x2160", "2560x1920", "0x0", "1920x1080 --help" })
+        foreach (string resolution in new[] { "3840x2160", "7680x4320", "2560x1920" })
+        {
+            settings.Resolution = resolution;
+            Require(GameLaunch.Arguments(settings).Contains("--resolution " + resolution), "Supported output rejected");
+        }
+        foreach (string resolution in new[] { "7681x4320", "7680x4321", "0x0", "1920x1080 --help" })
         {
             settings.Resolution = resolution;
             try { GameLaunch.Arguments(settings); throw new InvalidOperationException("Invalid resolution accepted"); }

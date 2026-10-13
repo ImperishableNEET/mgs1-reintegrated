@@ -1,0 +1,71 @@
+diff --git a/source/menu/jimaku.c b/source/menu/jimaku.c
+index 8b9791c..e53d518 100644
+--- a/source/menu/jimaku.c
++++ b/source/menu/jimaku.c
+@@ -6,6 +6,10 @@
+ #include "libdg/libdg.h"
+ #include "libgcl/libgcl.h"
+ #include "game/game.h"
++#ifdef MGS_NATIVE
++#include "mgs_hires_font.h"
++#include "mgs_video.h"
++#endif
+ 
+ // here or jimctl.h?
+ typedef struct {
+@@ -42,11 +46,22 @@ void menu_jimaku_act( MenuWork *work, u_long *ot )
+ 
+     if ( work->field_2B & 0xFE )
+     {
++#ifdef MGS_NATIVE
++        MgsVideoText(0);
++#endif
+         JimState.field_38_str = NULL;
+         JimState.field_0_active = 0;
+         return;
+     }
+ 
++#ifdef MGS_NATIVE
++    /* A board can be queued now, or its final sprite can already be in this OT
++     * even when the timer below changes active to zero. */
++    MgsVideoText((JimState.field_0_active == 1 || JimState.field_38_str != NULL) &&
++                 (JimState.field_1_type != 0 ||
++                  !(GM_Configuration & GM_CONFIG_CAPTION_OFF)));
++#endif
++
+     if ( JimState.field_0_active == 1 )
+     {
+         if ( (JimState.field_1_type != 0) ||
+@@ -59,6 +74,10 @@ void menu_jimaku_act( MenuWork *work, u_long *ot )
+             setClut(pSprt, 960, 510);
+             setUV0(pSprt, 0, 0);
+             setSprt(pSprt);
++#ifdef MGS_NATIVE
++            MgsHiResFontRegisterSprite(&pSprt->r0, &JimState.field_C_font,
++                                        pSprt->x0, pSprt->y0, pSprt->w, pSprt->h);
++#endif
+             addPrim(ot, pSprt);
+ 
+             for (i = 0; i < 8; i += 2)
+@@ -68,6 +87,11 @@ void menu_jimaku_act( MenuWork *work, u_long *ot )
+                 LSTORE(0x64000000, &pSprt2->r0);
+                 pSprt2->x0 += dword_8009E76C[i];
+                 pSprt2->y0 += dword_8009E76C[i + 1];
++#ifdef MGS_NATIVE
++                MgsHiResFontRegisterSprite(&pSprt2->r0, &JimState.field_C_font,
++                                            pSprt2->x0, pSprt2->y0,
++                                            pSprt2->w, pSprt2->h);
++#endif
+                 addPrim(ot, pSprt2);
+             }
+         }
+@@ -147,6 +171,9 @@ STATIC void menu_jimaku_init_helper(KCB *kcb)
+     font_set_buffer(kcb, MENU_JimakuTextBody);
+     font_set_color(kcb, 0, 0x6739, 0);
+     font_clut_update(kcb);
++#ifdef MGS_NATIVE
++    MgsHiResFontAttach(kcb);
++#endif
+ }
+ 
+ void menu_jimaku_init(MenuWork *work)

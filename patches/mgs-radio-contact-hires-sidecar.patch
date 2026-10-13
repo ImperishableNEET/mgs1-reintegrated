@@ -1,0 +1,45 @@
+diff --git a/source/menu/radiomem.c b/source/menu/radiomem.c
+index 50863cf..4fd3a59 100644
+--- a/source/menu/radiomem.c
++++ b/source/menu/radiomem.c
+@@ -3,6 +3,9 @@
+ #include "menuman.h"
+ #include "game/game.h"
+ #include "menu/radio.h"
++#ifdef MGS_NATIVE
++#include "mgs_hires_font.h"
++#endif
+ 
+ typedef struct RadioCodecStru_800ABB98
+ {
+@@ -229,6 +232,15 @@ void menu_radio_draw_mem(MenuWork *work, u_long *ot)
+             setClut(pSprt, 960, 510);
+             setXY0(pSprt, x + 64, y + 133);
+             setSprt(pSprt);
++#ifdef MGS_NATIVE
++            MgsHiResFontRegisterSpriteRegion(&pSprt->r0, pCodec->field_c_kcb,
++                                             pSprt->x0, pSprt->y0,
++                                             pSprt->w, pSprt->h,
++                                             pSprt->u0, pSprt->v0 - 4);
++            /* font_set_color below changes the CPU CLUT only. The names still
++             * sample the original VRAM foreground until a clut update. */
++            MgsHiResFontSetSpriteForeColor(&pSprt->r0, 2, 0x3a4b);
++#endif
+             addPrim(ot, pSprt);
+ 
+             if ((temp_s0 + i) == pCodec->field_0_idx)
+@@ -246,6 +258,14 @@ void menu_radio_draw_mem(MenuWork *work, u_long *ot)
+                             LSTORE(0x66606060, &pSprt2->r0);
+                             pSprt2->x0 += var_a1;
+                             pSprt2->y0 += var_a3;
++#ifdef MGS_NATIVE
++                            MgsHiResFontRegisterSpriteRegion(&pSprt2->r0,
++                                                             pCodec->field_c_kcb,
++                                                             pSprt2->x0, pSprt2->y0,
++                                                             pSprt2->w, pSprt2->h,
++                                                             pSprt2->u0, pSprt2->v0 - 4);
++                            MgsHiResFontSetSpriteForeColor(&pSprt2->r0, 2, 0x3a4b);
++#endif
+                             addPrim(ot, pSprt2);
+                         }
+                     }

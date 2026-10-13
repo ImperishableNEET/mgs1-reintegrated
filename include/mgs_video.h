@@ -18,8 +18,10 @@ void MgsVideoTagChannel(void *environment, int world);
 void MgsVideoSetDrawMode(void *packet, int mode);
 void MgsVideoBeginFrame(int which);
 void MgsVideoEndFrame(void);
+void MgsVideoDisplayFrame(int which);
 void MgsVideoMovie(int active);
 void MgsVideoCodec(int active);
+void MgsVideoText(int active);
 void MgsVideoStage(const char *name);
 
 #endif

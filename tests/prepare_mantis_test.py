@@ -64,7 +64,8 @@ def main():
     snippets = ["typedef struct { const char *name; int mask; } SAVEFILE;",
                 thresholds.group(), memory[table_start:table_end]]
     snippets.extend(definition(memory, name) for name in
-                    ("s07b_800D8338", "s07b_800D8410", "NativeMemoryProfile"))
+                    ("s07b_800D8338", "s07b_800D8410", "NativeMemoryProfile",
+                     "NativeInstalledProfile"))
     args.output.with_name("mantis_memory.inc").write_text("\n\n".join(snippets) + "\n", encoding="utf-8")
 
 

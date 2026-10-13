@@ -1,0 +1,13 @@
+diff --git a/source/libdg/frame.c b/source/libdg/frame.c
+--- a/source/libdg/frame.c
++++ b/source/libdg/frame.c
+@@ -124,6 +124,9 @@ void DG_StartFrame( void )
+         if ( DG_LastWhich < 0 || which != DG_LastWhich )
+         {
+             g_dispenv.disp.x = gClipHeights_800AB960[ which ];
++#ifdef MGS_NATIVE
++            MgsVideoDisplayFrame( which );
++#endif
+             PutDispEnv( &g_dispenv );
+ 
+             if ( !DG_HikituriFlagOld ) DG_DrawChanlSystem( 1 - which );

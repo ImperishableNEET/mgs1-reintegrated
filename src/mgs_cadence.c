@@ -144,6 +144,7 @@ static int UpdateOverlay(const PsyzVideoStats *stats)
 
 int MgsCadenceVSync(void)
 {
+    MgsControllerPortsUpdate();
     PsyzVideoStats stats = {0};
     PsyzAudioStats audio = {0};
     if (!overlay_enabled) {

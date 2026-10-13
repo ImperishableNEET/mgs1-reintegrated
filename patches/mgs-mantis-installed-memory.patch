@@ -1,0 +1,64 @@
+diff --git a/source/chara/psyco/mempsy.c b/source/chara/psyco/mempsy.c
+--- a/source/chara/psyco/mempsy.c
++++ b/source/chara/psyco/mempsy.c
+@@ -986,7 +986,10 @@
+ 
+         for ( j = 0; j < card->file_count; j++ )
+         {
+-            printf( "name %s\n", card->files[ j ].name );
++#ifdef MGS_NATIVE
++            if ( !MgsMantisMemoryInstalledEnabled() )
++#endif
++                printf( "name %s\n", card->files[ j ].name );
+             s07b_800D8338( card->files[ j ].name, sp10, sp20 );
+         }
+     }
+@@ -1027,6 +1030,33 @@
+         printf( "[mantis]   %s\n", card->files[ i ].name );
+     }
+ }
++
++/* Feed the original memory-card title matcher only the four verified Integral
++ * references. The launcher records this bitmask for deterministic replay. */
++static void NativeInstalledProfile( MEMCARD *card, unsigned int mask )
++{
++    static const struct {
++        unsigned int bit;
++        const char *name;
++    } titles[] = {
++        { MGS_MANTIS_SUIKODEN,      "BISLPS-00097" },
++        { MGS_MANTIS_AZURE_DREAMS,   "BISLPM-86047" },
++        { MGS_MANTIS_CASTLEVANIA,    "BISLPM-86023" },
++        { MGS_MANTIS_VANDAL_HEARTS,  "BISLPM-86007" }
++    };
++    int i;
++
++    memset( card, 0, sizeof(*card) );
++    for ( i = 0; i < COUNTOF( titles ); i++ )
++    {
++        if ( !(mask & titles[i].bit) ) continue;
++        snprintf( card->files[card->file_count].name,
++                  sizeof(card->files[card->file_count].name), "%s", titles[i].name );
++        card->files[card->file_count].size = MEMCARD_BLOCK_SIZE;
++        card->file_count++;
++    }
++    printf( "[mantis] Installed-game memory profile mask=0x%02x\n", mask );
++}
+ #endif
+ 
+ static void s07b_800D8564( Work *work, int time )
+@@ -1053,7 +1083,13 @@
+         }
+ 
+ #ifdef MGS_NATIVE
+-        if ( seed != 0 )
++        if ( MgsMantisMemoryInstalledEnabled() )
++        {
++            NativeInstalledProfile( &profile, MgsMantisMemoryInstalledMask() );
++            cards[ 0 ] = &profile;
++            cards[ 1 ] = NULL;
++        }
++        else if ( seed != 0 )
+         {
+             NativeMemoryProfile( &profile, seed );
+             cards[ 0 ] = &profile;

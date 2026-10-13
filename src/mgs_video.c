@@ -10,12 +10,16 @@
 #include "transport.h"
 #endif
 
-enum { VIDEO_COMMAND = 0xf3, FRAME_WIDTH = 320, FRAME_HEIGHT = 224 };
+enum { VIDEO_COMMAND = 0xf3, FRAME_WIDTH = 320, FRAME_HEIGHT = 224,
+       TEXT_IDLE_FRAMES = 30 };
 int ReiReintegratedTitleVisible;
 static unsigned view_numerator = 1, view_denominator = 1;
-static int widescreen, frame_active, frame_centre, capture_output, movie_active;
-static int codec_active, menu_stage;
+static int widescreen, frame_active, frame_centre, frame_buffer, capture_output, movie_active;
+static int codec_active, menu_stage, text_active;
+static unsigned text_idle_frames;
+static unsigned char buffer_original[2], presented_original;
 static unsigned output_width, output_height;
+static unsigned gameplay_scale = 1, text_scale = 1, requested_scale = 1;
 
 int MgsVideoReferenceRequired(void)
 {
@@ -108,7 +112,21 @@ int MgsVideoConfigure(const MgsVideoOptions *options)
     unsigned scale_y = (height + source_height - 1) / source_height;
     unsigned scale = scale_x > scale_y ? scale_x : scale_y;
     const char *original_res = getenv("REI_ORIGINAL_RES");
-    if (original_res && strcmp(original_res, "1") == 0) scale = 1;
+    if (original_res && strcmp(original_res, "1") == 0) {
+        // Widescreen packs the expanded scene into the original framebuffer.
+        // Keep at least one raster sample per original HUD pixel after that
+        // horizontal compression; 1x otherwise drops thin glyph columns.
+        scale = options->widescreen ? (3 * width + 4 * height - 1) / (4 * height) : 1;
+    }
+    /* Keep the font's resolution separate from gameplay. Apply it only when
+     * an actual Codec frame is drawn, after any held transition frames. */
+    unsigned font_scale = scale;
+    const char *codec_atlas = getenv("REI_CODEC_FONT_ATLAS");
+    if (codec_atlas && *codec_atlas) {
+        unsigned needed = scale_y;
+        if (needed > PSYZ_INTERNAL_RES_MAX) needed = PSYZ_INTERNAL_RES_MAX;
+        if (font_scale < needed) font_scale = needed;
+    }
     if (scale > PSYZ_INTERNAL_RES_MAX) {
         fprintf(stderr, "Resolution %ux%u requires %ux rendering; this renderer supports up to %ux.\n",
                 width, height, scale, PSYZ_INTERNAL_RES_MAX);
@@ -124,9 +142,14 @@ int MgsVideoConfigure(const MgsVideoOptions *options)
         return 0;
     }
     capture_output = 1;
+    gameplay_scale = requested_scale = scale;
+    text_scale = font_scale;
+    text_active = 0;
+    text_idle_frames = 0;
     output_width = width;
     output_height = height;
     widescreen = options->widescreen;
+    buffer_original[0] = buffer_original[1] = presented_original = 0;
     if (widescreen) {
         unsigned divisor = GreatestCommonDivisor(4 * height, 3 * width);
         view_numerator = 4 * height / divisor;
@@ -151,6 +174,9 @@ int MgsVideoConfigure(const MgsVideoOptions *options)
     printf("[video] %ux%u %s, %ux internal rendering%s.\n", width, height,
            widescreen ? "widescreen" : "original aspect", scale,
            options->fullscreen ? ", fullscreen" : "");
+    if (text_scale != gameplay_scale)
+        printf("[video] Sharp text uses %ux during Codec/subtitles; other frames stay %ux.\n",
+               text_scale, gameplay_scale);
     return 1;
 }
 
@@ -203,6 +229,22 @@ void MgsVideoBeginFrame(int which)
 {
     if (!capture_output)
         return;
+    /* Codec entry/exit holds the old front buffer without drawing an OT.
+     * Waiting until here avoids resizing that buffer during the hold, and
+     * keeps the aspect transition tied to its completed buffer as before. */
+    /* Brief gaps between subtitle boards should not rebuild GPU targets.
+     * Count completed draw opportunities, not Jimaku update calls. */
+    unsigned scale = codec_active || text_active || text_idle_frames ? text_scale : gameplay_scale;
+    if (!text_active && text_idle_frames)
+        --text_idle_frames;
+    if (scale != requested_scale) {
+        if (Psyz_VideoSetInternalResolution(scale) != 0) {
+            fputs("Renderer cannot change text rendering resolution.\n", stderr);
+            exit(EXIT_FAILURE);
+        }
+        requested_scale = scale;
+    }
+    frame_buffer = which;
     frame_centre = which * FRAME_WIDTH + FRAME_WIDTH / 2;
     frame_active = 1;
     if (!SetChannelTransform(0)) {
@@ -216,6 +258,7 @@ void MgsVideoEndFrame(void)
     if (!frame_active)
         return;
     DrawSync(0);
+    buffer_original[frame_buffer] = (unsigned char)(movie_active || codec_active || menu_stage);
     frame_active = 0;
     if (Psyz_GpuSetFrameTransform(1, 1, 0, 0) != 0 ||
         Psyz_GpuSetFramebufferSampling(0) != 0 ||
@@ -225,16 +268,36 @@ void MgsVideoEndFrame(void)
     }
 }
 
-static void SetCanvasPresentation(void)
+void MgsVideoDisplayFrame(int which)
+{
+    if (!capture_output || !widescreen || (unsigned)which >= 2)
+        return;
+    unsigned original = buffer_original[which];
+    if (original != presented_original) {
+        unsigned width = original ? 4 : output_width;
+        unsigned height = original ? 3 : output_height;
+        if (Psyz_VideoSetPresentation(width, height, FRAME_HEIGHT) != 0) {
+            fputs("Renderer cannot display framebuffer aspect.\n", stderr);
+            exit(EXIT_FAILURE);
+        }
+        presented_original = (unsigned char)original;
+    }
+}
+
+static void SetCanvasPresentation(int defer_display)
 {
     MgsVideoEndFrame();
     int original = movie_active || codec_active || menu_stage;
     unsigned width = original ? 4 : output_width;
     unsigned height = original ? 3 : output_height;
     if (Psyz_GpuSetTextureAlignment(original) != 0 ||
-        (widescreen && Psyz_VideoSetPresentation(width, height, FRAME_HEIGHT) != 0)) {
+        (widescreen && !defer_display &&
+         Psyz_VideoSetPresentation(width, height, FRAME_HEIGHT) != 0)) {
         fputs("Renderer cannot change canvas presentation.\n", stderr);
         exit(EXIT_FAILURE);
+    }
+    if (!defer_display) {
+        buffer_original[0] = buffer_original[1] = presented_original = (unsigned char)original;
     }
 }
 
@@ -244,7 +307,8 @@ void MgsVideoMovie(int active)
         return;
     MgsVideoEndFrame();
     movie_active = active != 0;
-    SetCanvasPresentation();
+    /* Hold the last 4:3 movie buffer until a world frame is completed. */
+    SetCanvasPresentation(!movie_active);
 }
 
 void MgsVideoCodec(int active)
@@ -253,7 +317,24 @@ void MgsVideoCodec(int active)
         return;
     MgsVideoEndFrame();
     codec_active = active != 0;
-    SetCanvasPresentation();
+    if (codec_active) {
+        /* Entering Codec clears Jimaku; its own scale already stays high. */
+        text_active = 0;
+        text_idle_frames = 0;
+    }
+    SetCanvasPresentation(1);
+}
+
+void MgsVideoText(int active)
+{
+    if (!capture_output || text_active == (active != 0))
+        return;
+    MgsVideoEndFrame();
+    text_active = active != 0;
+    if (text_active)
+        text_idle_frames = 0;
+    else if (!codec_active && text_scale != gameplay_scale)
+        text_idle_frames = TEXT_IDLE_FRAMES;
 }
 
 void MgsVideoStage(const char *name)
@@ -267,11 +348,13 @@ void MgsVideoStage(const char *name)
     if (!capture_output)
         return;
     MgsVideoEndFrame();
+    text_active = 0;
+    text_idle_frames = 0;
     menu_stage = 0;
     for (size_t index = 0; index < sizeof(canvases) / sizeof(canvases[0]); ++index)
         if (strcmp(name, canvases[index]) == 0) {
             menu_stage = 1;
             break;
         }
-    SetCanvasPresentation();
+    SetCanvasPresentation(0);
 }

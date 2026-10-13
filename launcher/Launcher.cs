@@ -14,7 +14,7 @@ namespace ReIntegral
         private readonly TextBox discOne = new TextBox(), discTwo = new TextBox();
         private readonly TextBox textPack = new TextBox(), voicePack = new TextBox();
         private readonly ComboBox resolution = new ComboBox(), mantis = new ComboBox();
-        private readonly CheckBox wide = new CheckBox(), fullscreen = new CheckBox(), scanlines = new CheckBox(), codecTurbo = new CheckBox();
+        private readonly CheckBox wide = new CheckBox(), fullscreen = new CheckBox(), scanlines = new CheckBox(), codecTurbo = new CheckBox(), missionLogFast = new CheckBox(), firstPersonMoveShoot = new CheckBox(), sharpCodecFont = new CheckBox();
         private readonly CheckBox textureCorrection = new CheckBox();
         private readonly CheckBox geometryPrecision = new CheckBox(), depthBuffer = new CheckBox();
         private readonly CheckBox bonus = new CheckBox(), invulnerable = new CheckBox();
@@ -47,7 +47,7 @@ namespace ReIntegral
             Text = "Metal Gear Solid: Reintegrated — " + BuildInfo.Version;
             Font = new Font("Segoe UI", 9F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(720, 665);
+            ClientSize = new Size(720, 729);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -67,7 +67,7 @@ namespace ReIntegral
             using (var source = Image.FromStream(stream)) logo.Image = new Bitmap(source);
             logo.Disposed += delegate { logo.Image.Dispose(); };
             Controls.Add(logo);
-            tabs.SetBounds(16, 202, 688, 365);
+            tabs.SetBounds(16, 202, 688, 429);
             Controls.Add(tabs);
             BuildDisplay();
             BuildGraphics();
@@ -75,22 +75,22 @@ namespace ReIntegral
             BuildLanguages();
             BuildAdvanced();
             play.Text = "Save and play";
-            play.SetBounds(550, 580, 154, 34);
+            play.SetBounds(550, 644, 154, 34);
             play.Click += async delegate { await Play(); };
             Controls.Add(play);
-            AddButton(Controls, "Save settings", 16, 580, delegate { Guard(Save); });
-            AddButton(Controls, "Open logs", 154, 580, delegate { Guard(delegate { OpenFolder("logs"); }); });
-            AddButton(Controls, "Open save folder", 292, 580, delegate { Guard(delegate { OpenFolder(""); }); });
-            status.SetBounds(16, 617, 688, 20);
+            AddButton(Controls, "Save settings", 16, 644, delegate { Guard(Save); });
+            AddButton(Controls, "Open logs", 154, 644, delegate { Guard(delegate { OpenFolder("logs"); }); });
+            AddButton(Controls, "Open save folder", 292, 644, delegate { Guard(delegate { OpenFolder(""); }); });
+            status.SetBounds(16, 681, 688, 20);
             status.Text = "Ready. Your original disc images remain read-only.";
             Controls.Add(status);
-            var notice = new Label { Text = "Unofficial project; not affiliated with or endorsed by Konami", Left = 16, Top = 642, Width = 688 };
+            var notice = new Label { Text = "Unofficial project; not affiliated with or endorsed by Konami", Left = 16, Top = 706, Width = 688 };
             Controls.Add(notice);
         }
 
         private TabPage Page(string title)
         {
-            var page = new TabPage(title) { Padding = new Padding(12), UseVisualStyleBackColor = true };
+            var page = new TabPage(title) { Padding = new Padding(12), UseVisualStyleBackColor = true, AutoScroll = true };
             tabs.TabPages.Add(page);
             return page;
         }
@@ -126,11 +126,17 @@ namespace ReIntegral
             LabelAt(page, "Keep each CUE beside its matching BIN. No extraction or VR disc is needed.", 151);
             LabelAt(page, "Output resolution", 173);
             resolution.SetBounds(16, 200, 220, 28);
-            resolution.Items.AddRange(new object[] { "640x480", "1280x720", "1280x960", "1600x900", "1920x1080", "2560x1440" });
+            resolution.Items.AddRange(new object[] { "640x480", "1280x720", "1280x960", "1600x900", "1920x1080", "2560x1440", "3840x2160" });
             page.Controls.Add(resolution);
             CheckAt(page, wide, "Widescreen (expand the scene view)", 237);
-            CheckAt(page, fullscreen, "Fullscreen", 267);
-            CheckAt(page, scanlines, "Scanlines (optional display effect)", 297);
+            wide.CheckedChanged += delegate {
+                if (!wide.Checked) return;
+                var parts = resolution.Text.Split('x');
+                int w, h;
+                if (parts.Length == 2 && Int32.TryParse(parts[0], out w) && Int32.TryParse(parts[1], out h) && w * 3 <= h * 4)
+                    resolution.Text = "1280x720";
+            };
+            CheckAt(page, fullscreen, "Borderless windowed fullscreen (Alt+Enter)", 267);
         }
 
         private void BuildGraphics()
@@ -143,6 +149,9 @@ namespace ReIntegral
             CheckAt(page, depthBuffer, "Depth buffer (per-pixel surface visibility)", 144);
             LabelAt(page, "Applies to projected models. Screen effects keep their original rendering.", 206);
             LabelAt(page, "Depth testing may change overlapping surfaces; compare with it off.", 242);
+            CheckAt(page, scanlines, "Scanlines (optional display effect)", 278);
+            CheckAt(page, sharpCodecFont, "Sharp English text (Heros prototype)", 318);
+            LabelAt(page, "Codec, subtitles and location names. More GPU memory while text is visible.", 356);
         }
 
         private static void CheckAt(Control parent, CheckBox field, string text, int y)
@@ -159,13 +168,15 @@ namespace ReIntegral
             CheckAt(page, invulnerable, "Invulnerability (testing; scripted deaths still apply)", 58);
             CheckAt(page, autoCard, "Use owned access cards without equipping them", 98);
             CheckAt(page, fastLoading, "Faster map loading (experimental)", 138);
-            LabelAt(page, "Psycho Mantis memory reading: off, random, or a numeric seed", 185);
+            LabelAt(page, "Psycho Mantis memory reading: installed games, off, random, or seed", 185);
             mantis.SetBounds(16, 214, 280, 28);
-            mantis.Items.AddRange(new object[] { "off", "random" });
+            mantis.Items.AddRange(new object[] { "installed", "off", "random" });
             page.Controls.Add(mantis);
-            LabelAt(page, "Controller-port swap: F2 or press both sticks (L3 + R3).", 260);
-            CheckAt(page, codecTurbo, "Hold Triangle to fast-forward Codec dialogue", 295);
-            LabelAt(page, "Bonus items persist in ordinary saves. Other options apply to this launch.", 329);
+            LabelAt(page, "Controller-port swap: F2 or press both sticks (L3 + R3).", 250);
+            CheckAt(page, codecTurbo, "Hold Triangle to fast-forward Codec dialogue", 278);
+            CheckAt(page, missionLogFast, "Faster mission-log entrance, fades and exit", 310);
+            CheckAt(page, firstPersonMoveShoot, "Integral first-person moving and shooting (all difficulties)", 342);
+            LabelAt(page, "Bonus items persist in ordinary saves. Other options apply to this launch.", 375);
         }
 
         private void BuildAdvanced()
@@ -226,8 +237,8 @@ namespace ReIntegral
         {
             discOne.Text = value.DiscOne; discTwo.Text = value.DiscTwo;
             textPack.Text = value.TextPack; voicePack.Text = value.VoicePack;
-            resolution.Text = value.Resolution; wide.Checked = value.Widescreen;
-            fullscreen.Checked = value.Fullscreen; scanlines.Checked = value.Scanlines; codecTurbo.Checked = value.CodecTurbo; bonus.Checked = value.BonusItems;
+            wide.Checked = value.Widescreen; resolution.Text = value.Resolution;
+            fullscreen.Checked = value.Fullscreen; scanlines.Checked = value.Scanlines; codecTurbo.Checked = value.CodecTurbo; missionLogFast.Checked = value.MissionLogFast; firstPersonMoveShoot.Checked = value.FirstPersonMoveShoot; sharpCodecFont.Checked = value.SharpCodecFont; bonus.Checked = value.BonusItems;
             textureCorrection.Checked = value.TextureCorrection;
             geometryPrecision.Checked = value.GeometryPrecision;
             depthBuffer.Checked = value.DepthBuffer;
@@ -242,7 +253,7 @@ namespace ReIntegral
             return new Settings { DiscOne = AbsolutePath(discOne.Text), DiscTwo = AbsolutePath(discTwo.Text),
                 TextPack = AbsolutePath(textPack.Text), VoicePack = AbsolutePath(voicePack.Text),
                 Resolution = resolution.Text.Trim(), Widescreen = wide.Checked, Fullscreen = fullscreen.Checked,
-                Scanlines = scanlines.Checked, CodecTurbo = codecTurbo.Checked,
+                Scanlines = scanlines.Checked, CodecTurbo = codecTurbo.Checked, MissionLogFast = missionLogFast.Checked, FirstPersonMoveShoot = firstPersonMoveShoot.Checked, SharpCodecFont = sharpCodecFont.Checked,
                 TextureCorrection = textureCorrection.Checked,
                 GeometryPrecision = geometryPrecision.Checked, DepthBuffer = depthBuffer.Checked,
                 BonusItems = bonus.Checked, Invulnerable = invulnerable.Checked, AutoCard = autoCard.Checked,
@@ -298,6 +309,12 @@ namespace ReIntegral
 
         private void StartGame()
         {
+            string atlas = null;
+            if (sharpCodecFont.Checked)
+            {
+                atlas = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fonts", "texgyreheros_regular_ascii8x_coverage.bmp");
+                if (!File.Exists(atlas)) throw new FileNotFoundException("Sharp Codec font atlas is missing from the fonts folder.", atlas);
+            }
             string path = Path.Combine(dataDirectory, "logs", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + ".log");
             log = new StreamWriter(path, true) { AutoFlush = true };
             log.WriteLine("Metal Gear Solid: Reintegrated " + BuildInfo.Version + " (" + BuildInfo.Commit + ")");
@@ -308,6 +325,10 @@ namespace ReIntegral
             startInfo.EnvironmentVariables["REI_REINTEGRATED_TITLE"] = "1";
             startInfo.EnvironmentVariables["REI_SCANLINES"] = scanlines.Checked ? "1" : "0";
             startInfo.EnvironmentVariables["REI_CODEC_TURBO"] = codecTurbo.Checked ? "1" : "0";
+            startInfo.EnvironmentVariables["REI_MISSION_LOG_FAST"] = missionLogFast.Checked ? "1" : "0";
+            startInfo.EnvironmentVariables["REI_FIRST_PERSON_MOVE_SHOOT"] = GameLaunch.FirstPersonMoveShootEnvironment(firstPersonMoveShoot.Checked);
+            if (atlas != null) startInfo.EnvironmentVariables["REI_CODEC_FONT_ATLAS"] = atlas;
+            else startInfo.EnvironmentVariables.Remove("REI_CODEC_FONT_ATLAS");
             game = new Process { StartInfo = startInfo };
             game.OutputDataReceived += WriteLog;
             game.ErrorDataReceived += WriteLog;

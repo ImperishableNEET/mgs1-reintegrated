@@ -12,13 +12,20 @@ def region_id(path: Path, source_root: Path) -> str:
 def region_prefix(identity: str) -> str:
     section = f".mgsst${identity}"
     symbol = f"MgsOverlay_{identity}"
+    # The mutable $m anchor must precede recovered globals. Clang may promote
+    # an action table to constant and otherwise establish read-only COFF flags
+    # for the shared section before emitting mutable script data. Explicit
+    # pragma attributes alone do not override that backend section inference.
     # Leave the pragmas active through EOF: C tentative definitions are emitted
     # after parsing and otherwise escape to the default BSS section with Clang.
     return (
         f'#pragma section("{section}$a", read, write)\n'
         f'#pragma section("{section}$z", read, write)\n'
+        f'#pragma section("{section}$m", read, write)\n'
+        f'#pragma section("{section}$n", read, write)\n'
         f'__declspec(allocate("{section}$a")) unsigned char {symbol}_begin = 0;\n'
         f'__declspec(allocate("{section}$z")) unsigned char {symbol}_end = 0;\n'
+        f'__declspec(allocate("{section}$m")) unsigned char {symbol}_data = 0;\n'
         f'#pragma data_seg("{section}$m")\n'
         f'#pragma bss_seg("{section}$n")\n'
     )

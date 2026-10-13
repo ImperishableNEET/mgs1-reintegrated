@@ -12,10 +12,18 @@ Windows/Linux x86-64 and ARM64 are portability goals. Selected component fixture
 have executed on x86-64 and emulated ARM64; full 64-bit recovered-game execution
 is not established. The earlier hybrid project is a separate foundation.
 
+New launcher profiles enable Psycho Mantis's **Installed games** memory reading.
+It checks local file and folder names within bounded search roots and uses four
+verified Integral dialogue references: Suikoden, Azure Dreams / Other Life,
+Castlevania: Symphony of the Night, and Vandal Hearts. Off, random and numeric
+seed modes remain available, and saved explicit choices are preserved. No game
+or save contents are read; Steam library configuration is read only for paths.
+Generic Castlevania / Other Life names are heuristic aliases for those lines.
+
 ## Download
 
-[Experimental Windows x86 prerelease](https://github.com/ImperishableNEET/mgs1-reintegrated/releases/tag/v0.2.0-reintegrated.1)
-� download windows-x86.zip, extract the folder, and open MGS-Reintegrated.exe.
+[Experimental Windows x86 prerelease](https://github.com/ImperishableNEET/mgs1-reintegrated/releases/tag/v0.2.0-reintegrated.2)
+— download windows-x86.zip, extract the folder, and open MGS-Reintegrated.exe.
 Supply your own Integral CUE/BIN discs. This is a 32-bit Windows build; review
 the release notes for verification limits.
 
@@ -54,8 +62,8 @@ are included. [Disc import](docs/DISC_IMPORT.md) documents the existing local
 extractor. Imported content is for tools; the runtime currently still reads CUE/BIN.
 Do not mistake extracted content support for a directory-backed runtime.
 
-[Checkpoint and limitations](docs/REINTEGRATED_STATUS.md) ·
-[Fork workflow](docs/FORK_WORKFLOW.md) · [Third-party notices](docs/THIRD_PARTY.md) · [License scope](LICENSE)
+[Checkpoint and limitations](docs/REINTEGRATED_STATUS.md) |
+[Fork workflow](docs/FORK_WORKFLOW.md) | [Third-party notices](docs/THIRD_PARTY.md) | [License scope](LICENSE)
 
 Upstream records remain historical upstream evidence. They must not be read as
 independent Reintegrated verification. Small native fixes are intended to remain

@@ -11,6 +11,8 @@ namespace ReIntegral
 {
     public static class GameLaunch
     {
+        public static string FirstPersonMoveShootEnvironment(bool enabled) { return enabled ? "1" : "0"; }
+
         public static string Quote(string value)
         {
             var result = new StringBuilder("\"");
@@ -60,8 +62,8 @@ namespace ReIntegral
             if (!match.Success) throw new ArgumentException("Resolution must use WIDTHxHEIGHT, such as 1920x1080.");
             int width = Int32.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
             int height = Int32.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
-            if (width < 320 || width > 2560 || height < 240 || height > (settings.Widescreen ? 1792 : 1920))
-                throw new ArgumentException("This renderer supports up to 2560x1792 widescreen or 2560x1920 original aspect.");
+            if (width < 320 || width > 7680 || height < 240 || height > 4320)
+                throw new ArgumentException("Output resolution must be between 320x240 and 7680x4320.");
             if (settings.Widescreen && (width * 3 < height * 4 || width * 3 > height * 12))
                 throw new ArgumentException("Widescreen aspect ratio must be between 4:3 and 4:1.");
         }
@@ -69,10 +71,14 @@ namespace ReIntegral
         private static void AddMantis(List<string> arguments, string value)
         {
             if (value == "off") return;
+            if (String.Equals(value, "installed", StringComparison.OrdinalIgnoreCase)) {
+                arguments.Add("--mantis-memory installed");
+                return;
+            }
             int seed;
             if (value == "random") seed = new Random().Next(1, Int32.MaxValue);
             else if (!Int32.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out seed) || seed < 1)
-                throw new ArgumentException("Mantis memory must be off, random, or a positive seed up to 2147483647.");
+                throw new ArgumentException("Mantis memory must be installed, off, random, or a positive seed up to 2147483647.");
             arguments.Add("--mantis-memory " + seed.ToString(CultureInfo.InvariantCulture));
         }
 

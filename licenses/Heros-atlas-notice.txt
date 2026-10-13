@@ -1,0 +1,17 @@
+Reintegrated Heros coverage atlas
+
+This optional bitmap atlas is derived from TeX Gyre Heros Regular, a
+Helvetica-compatible font. It is not Helvetica or an original Konami font.
+Changes: the font's ASCII glyphs were rasterized into a coverage atlas for the
+optional English text renderer. No original font file is replaced.
+
+The atlas is distributed under the GUST Font License and referenced LPPL 1.3c.
+Keep GUST-FONT-LICENSE.txt, LPPL-1.3c.txt and this attribution with the atlas.
+The original font project provides no support for this derived game asset.
+Complete original font distribution and upstream license information:
+https://ctan.org/pkg/tex-gyre
+https://mirrors.ctan.org/fonts/tex-gyre.zip
+https://www.gust.org.pl/projects/e-foundry/tex-gyre
+
+Atlas file: texgyreheros_regular_ascii8x_coverage.bmp
+Rendering format: 2048x672 RGB coverage, 16 columns by 6 rows, ASCII 32..126.

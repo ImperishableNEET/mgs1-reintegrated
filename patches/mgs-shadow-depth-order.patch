@@ -1,0 +1,30 @@
+--- a/source/libdg/trans.c
++++ b/source/libdg/trans.c
+@@ -463,11 +463,27 @@
+ #endif
+         SPAD->bothface = model->flag & DG_MODEL_BOTHFACE;
+ 
++#ifdef MGS_NATIVE
++        POLY_GT4 *first_pack = packs;
++#endif
+         packs = DG_WriteObjVertices( ( unsigned int * ) model->vindices, packs, obj->n_packs
+ #ifdef MGS_NATIVE
+                                       , parent_packs, model->verts
+ #endif
+                                       );
++#ifdef MGS_NATIVE
++        /* Ground shadows use an OT raise, not a physical height offset.
++         * Keep their original order while retaining projected UVs/positions. */
++        unsigned shadow_texture = GV_StrCode("shadow");
++        for (int face = 0; face < obj->n_packs; ++face) {
++            if (model->texids && model->texids[face] == shadow_texture) {
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x0);
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x1);
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x2);
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x3);
++            }
++        }
++#endif
+         obj = obj->extend;
+     }
+ }

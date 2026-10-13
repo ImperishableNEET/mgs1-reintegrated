@@ -1,0 +1,56 @@
+--- a/source/libdg/libdg.h
++++ b/source/libdg/libdg.h
+@@ -106,6 +106,10 @@
+         DG_FLAG_AMBIENT         = 0x0100,       //
+         DG_FLAG_IRTEXTURE       = 0x0200,       //
+         DG_FLAG_ENVMAP          = 0x0400,       //
++#ifdef MGS_NATIVE
++        /* Runtime-only ordering policy; does not change recovered layouts. */
++        DG_FLAG_NATIVE_ORDERED  = 0x10000,
++#endif
+ };
+ // clang-format on
+ 
+--- a/source/libdg/trans.c
++++ b/source/libdg/trans.c
+@@ -434,7 +434,7 @@
+ 
+ STATIC void DG_TransObj( DG_OBJ *obj, int idx
+ #ifdef MGS_NATIVE
+-                              , POLY_GT4 *parent_packs
++                              , POLY_GT4 *parent_packs, int ordered
+ #endif
+                               )
+ {
+@@ -476,7 +476,7 @@
+          * Keep their original order while retaining projected UVs/positions. */
+         unsigned shadow_texture = GV_StrCode("shadow");
+         for (int face = 0; face < obj->n_packs; ++face) {
+-            if (model->texids && model->texids[face] == shadow_texture) {
++            if (ordered || (model->texids && model->texids[face] == shadow_texture)) {
+                 MgsTextureCorrectionOrderOnly(&first_pack[face].x0);
+                 MgsTextureCorrectionOrderOnly(&first_pack[face].x1);
+                 MgsTextureCorrectionOrderOnly(&first_pack[face].x2);
+@@ -548,7 +548,7 @@
+ 
+             DG_TransObj(obj, idx
+ #ifdef MGS_NATIVE
+-                        , parent_packs
++                        , parent_packs, (objs->flag & DG_FLAG_NATIVE_ORDERED) != 0
+ #endif
+                         );
+         }
+--- a/source/takabe/elc_flr.c
++++ b/source/takabe/elc_flr.c
+@@ -100,6 +100,11 @@
+     GM_ConfigObjectLight(object, work->light);
+     GM_ConfigObjectJoint(object);
+     object->objs->objs[0].raise = -3000;
++#ifdef MGS_NATIVE
++    /* This floor effect deliberately uses OT ordering instead of physical
++     * depth against the grating. Retain its projected positions and UVs. */
++    object->objs->flag |= DG_FLAG_NATIVE_ORDERED;
++#endif
+ 
+     work->f150 = 0;
+     return 0;

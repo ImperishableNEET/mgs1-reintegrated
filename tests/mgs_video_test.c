@@ -7,7 +7,7 @@
 
 enum { WINDOW, SCALE, PRESENT, TRANSFORM, REGISTER, SYNC };
 typedef struct { int kind; unsigned a, b; int c, d; } Event;
-static Event events[256];
+static Event events[512];
 static unsigned event_count, checked;
 static PsyzGpuCommandHandler command_handler;
 static void *command_userdata;
@@ -108,6 +108,8 @@ static void CheckDefault(void)
     MgsVideoCodec(1);
     MgsVideoMovie(0);
     MgsVideoCodec(0);
+    MgsVideoText(1);
+    MgsVideoText(0);
     MgsVideoStage("title");
 }
 
@@ -136,20 +138,26 @@ static void CheckCodec(const u_long *marker)
     Expect(SYNC, 0, 0, 0, 0);
     Expect(TRANSFORM, 3, 4, 480, 0);
     Expect(TRANSFORM, 1, 1, 0, 0);
-    Expect(PRESENT, 4, 3, 224, 0);
+    MgsVideoDisplayFrame(1); // the held widescreen front buffer
+    assert(checked == event_count);
     CheckOriginalCanvas(marker);
+    MgsVideoDisplayFrame(1); // still displaying the old front buffer
+    assert(checked == event_count);
+    MgsVideoDisplayFrame(0); // first completed Codec buffer
+    Expect(PRESENT, 4, 3, 224, 0);
     MgsVideoMovie(1);
     Expect(PRESENT, 4, 3, 224, 0);
     MgsVideoCodec(0);
-    Expect(PRESENT, 4, 3, 224, 0);
+    assert(checked == event_count);
     CheckOriginalCanvas(marker);
     MgsVideoCodec(1);
-    Expect(PRESENT, 4, 3, 224, 0);
+    assert(checked == event_count);
     MgsVideoMovie(0);
-    Expect(PRESENT, 4, 3, 224, 0);
+    assert(checked == event_count);
     CheckOriginalCanvas(marker);
     MgsVideoCodec(0);
-    Expect(PRESENT, 2560, 1440, 224, 0);
+    MgsVideoDisplayFrame(1); // hold the old 4:3 buffer on exit
+    assert(checked == event_count);
     assert(MgsVideoHalfWidth() == 214);
     CheckClip(-160, 159, -214, 213);
     MgsVideoBeginFrame(0);
@@ -157,6 +165,10 @@ static void CheckCodec(const u_long *marker)
     MgsVideoEndFrame();
     Expect(SYNC, 0, 0, 0, 0);
     Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(1);
+    assert(checked == event_count);
+    MgsVideoDisplayFrame(0);
+    Expect(PRESENT, 2560, 1440, 224, 0);
 }
 
 static void CheckEffects(void)
@@ -240,13 +252,22 @@ static void CheckMenuStages(const u_long *marker)
         CheckOriginalCanvas(marker);
     }
     MgsVideoCodec(1);
-    Expect(PRESENT, 4, 3, 224, 0);
+    assert(checked == event_count);
     MgsVideoStage("s00a");
     Expect(PRESENT, 4, 3, 224, 0);
     CheckOriginalCanvas(marker);
     MgsVideoCodec(0);
-    Expect(PRESENT, 2560, 1440, 224, 0);
+    assert(checked == event_count);
     assert(MgsVideoHalfWidth() == 214);
+    MgsVideoBeginFrame(1);
+    Expect(TRANSFORM, 3, 4, 480, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(0);
+    assert(checked == event_count);
+    MgsVideoDisplayFrame(1);
+    Expect(PRESENT, 2560, 1440, 224, 0);
     MgsVideoStage("opening");
     Expect(PRESENT, 2560, 1440, 224, 0);
     MgsVideoStage("d00a");
@@ -308,7 +329,8 @@ static void CheckWide(void)
     Expect(PRESENT, 4, 3, 224, 0);
     CheckOriginalCanvas(storage.packet.code);
     MgsVideoMovie(0);
-    Expect(PRESENT, 2560, 1440, 224, 0);
+    MgsVideoDisplayFrame(0); /* last movie frame stays pillarboxed */
+    assert(checked == event_count);
     assert(MgsVideoHalfWidth() == 214);
     MgsVideoBeginFrame(1);
     assert(command_handler(storage.packet.code, 15, command_userdata) == 1);
@@ -317,16 +339,202 @@ static void CheckWide(void)
     MgsVideoEndFrame();
     Expect(SYNC, 0, 0, 0, 0);
     Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(0); /* held movie buffer still remains 4:3 */
+    assert(checked == event_count);
+    MgsVideoDisplayFrame(1); /* first completed world buffer */
+    Expect(PRESENT, 2560, 1440, 224, 0);
     CheckCodec(storage.packet.code);
     CheckEffects();
     CheckMenuStages(storage.packet.code);
     assert(memcmp(&tagged, &storage.packet, sizeof(tagged)) == 0);
 }
 
+static void CheckSharpCodecResolution(void)
+{
+    DR_TPAGE world = {0};
+    MgsVideoSetDrawMode(&world, MGS_VIDEO_WORLD);
+    MgsVideoBeginFrame(0);
+    Expect(TRANSFORM, 3, 4, 160, 1);
+    pending = world.code;
+    MgsVideoCodec(1);
+    /* Finish pending world work before changing mode, but do not resize the
+     * held world framebuffer during the two-frame Codec entry pause. */
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 3, 4, 160, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(0);
+    MgsVideoDisplayFrame(0);
+    MgsVideoCodec(1); /* duplicate state notifications are harmless */
+    assert(checked == event_count);
+
+    MgsVideoBeginFrame(1);
+    Expect(SCALE, 4, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 480, 0);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(0);
+    assert(checked == event_count);
+    MgsVideoDisplayFrame(1);
+    Expect(PRESENT, 4, 3, 224, 0);
+
+    MgsVideoCodec(0);
+    for (int held = 0; held < 3; ++held) MgsVideoDisplayFrame(1);
+    assert(checked == event_count);
+    MgsVideoBeginFrame(0);
+    Expect(SCALE, 2, 0, 0, 0);
+    Expect(TRANSFORM, 3, 4, 160, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(1);
+    assert(checked == event_count);
+    MgsVideoDisplayFrame(0);
+    Expect(PRESENT, 1280, 720, 224, 0);
+
+    /* Regular gameplay frames and menu canvases must not repeatedly resize. */
+    MgsVideoBeginFrame(1);
+    Expect(TRANSFORM, 3, 4, 480, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoStage("title");
+    Expect(PRESENT, 4, 3, 224, 0);
+    MgsVideoBeginFrame(0);
+    Expect(TRANSFORM, 1, 1, 160, 0);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+
+    assert(checked == event_count);
+}
+
+static void CheckSubtitleResolution(int sharp)
+{
+    if (sharp) {
+        /* The earlier Codec test finishes on the title canvas. */
+        MgsVideoStage("s00a");
+        Expect(PRESENT, 1280, 720, 224, 0);
+    }
+    MgsVideoText(1);
+    MgsVideoText(1);
+    MgsVideoDisplayFrame(0);
+    assert(checked == event_count); /* no resizing while a frame is held */
+    assert(MgsVideoHalfWidth() == 214); /* subtitles do not change world FOV */
+    MgsVideoBeginFrame(0);
+    if (sharp) Expect(SCALE, 4, 0, 0, 0);
+    Expect(TRANSFORM, 3, 4, 160, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(0);
+    assert(checked == event_count); /* no 4:3 aspect switch for subtitles */
+
+    /* A subtitle ending must not lower the scale while Codec still owns it. */
+    MgsVideoCodec(1);
+    MgsVideoText(0);
+    MgsVideoBeginFrame(1);
+    Expect(TRANSFORM, 1, 1, 480, 0);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoText(1);
+    MgsVideoCodec(0);
+    MgsVideoBeginFrame(0);
+    Expect(TRANSFORM, 3, 4, 160, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+
+    MgsVideoText(0);
+    MgsVideoDisplayFrame(0);
+    assert(checked == event_count);
+    /* A short inter-subtitle gap keeps the sharp target. A new board starts
+     * its own grace period; only rendered frames count toward expiry. */
+    for (int i = 0; i < 10; ++i) {
+        MgsVideoText(0); /* repeated idle notifications must not restart grace */
+        MgsVideoBeginFrame(i & 1);
+        Expect(TRANSFORM, 3, 4, (i & 1) ? 480 : 160, 1);
+        MgsVideoEndFrame();
+        Expect(SYNC, 0, 0, 0, 0);
+        Expect(TRANSFORM, 1, 1, 0, 0);
+    }
+    MgsVideoText(1);
+    MgsVideoText(0);
+    for (int i = 0; i < 30; ++i) {
+        MgsVideoBeginFrame(i & 1);
+        Expect(TRANSFORM, 3, 4, (i & 1) ? 480 : 160, 1);
+        MgsVideoEndFrame();
+        Expect(SYNC, 0, 0, 0, 0);
+        Expect(TRANSFORM, 1, 1, 0, 0);
+    }
+    MgsVideoBeginFrame(1);
+    if (sharp) Expect(SCALE, 2, 0, 0, 0);
+    Expect(TRANSFORM, 3, 4, 480, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+
+    /* Stage teardown must not leave a dead subtitle holding high resolution. */
+    MgsVideoText(1);
+    MgsVideoStage("s00a");
+    Expect(PRESENT, 1280, 720, 224, 0);
+    MgsVideoBeginFrame(0);
+    Expect(TRANSFORM, 3, 4, 160, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+
+    /* A Codec interruption cancels Jimaku's idle grace. Its exit returns
+     * directly to gameplay scale when no new subtitle is queued. */
+    MgsVideoText(1);
+    MgsVideoBeginFrame(1);
+    if (sharp) Expect(SCALE, 4, 0, 0, 0);
+    Expect(TRANSFORM, 3, 4, 480, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoText(0);
+    MgsVideoCodec(1);
+    MgsVideoCodec(0);
+    MgsVideoBeginFrame(0);
+    if (sharp) Expect(SCALE, 2, 0, 0, 0);
+    Expect(TRANSFORM, 3, 4, 160, 1);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    assert(checked == event_count);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
     const char *mode = argv[1];
+    if (!strcmp(mode, "native-wide") || !strcmp(mode, "native-original") || !strcmp(mode, "native-sharp")) {
+#ifdef _WIN32
+        _putenv("REI_ORIGINAL_RES=1");
+#else
+        setenv("REI_ORIGINAL_RES", "1", 1);
+#endif
+        int sharp = !strcmp(mode, "native-sharp");
+#ifdef _WIN32
+        _putenv(sharp ? "REI_CODEC_FONT_ATLAS=fixture" : "REI_CODEC_FONT_ATLAS=");
+#else
+        setenv("REI_CODEC_FONT_ATLAS", sharp ? "fixture" : "", 1);
+#endif
+        MgsVideoOptions options = {1280, 720, strcmp(mode, "native-original") != 0, 0};
+        assert(MgsVideoConfigure(&options));
+        Expect(WINDOW, 1280, 720, 0, 0);
+        Expect(SCALE, options.widescreen ? 2 : 1, 0, 0, 0);
+        Expect(PRESENT, options.widescreen ? 1280 : 4, options.widescreen ? 720 : 3, 224, 0);
+        Expect(TRANSFORM, 1, 1, 0, 0);
+        Expect(REGISTER, 0xf3, 0, 0, 0);
+        if (sharp) CheckSharpCodecResolution();
+        if (options.widescreen) CheckSubtitleResolution(sharp);
+        assert(checked == event_count);
+        puts("Native raster presentation contract PASS");
+        return 0;
+    }
     if (!strcmp(mode, "parse")) CheckParse();
     else if (!strcmp(mode, "default")) CheckDefault();
     else {

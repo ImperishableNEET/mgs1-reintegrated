@@ -1,6 +1,6 @@
-add_library(psyz_renderer STATIC sdl3_gpu.c
+add_library(psyz_renderer STATIC sdl3_gpu.c ../../src/mgs_hires_font.c
     "${PSYZ_SOURCE_ROOT}/src/platform/sdl3_software.c")
-target_include_directories(psyz_renderer PRIVATE
+target_include_directories(psyz_renderer PRIVATE ../../include
     "${PSYZ_SOURCE_ROOT}/include" "${PSYZ_SOURCE_ROOT}/src"
     "${PSYZ_SOURCE_ROOT}/src/platform"
     "${PSYZ_SOURCE_ROOT}/../external/SDL/src/video/khronos")

@@ -1,5 +1,44 @@
 # RE:INTEGRAL roadmap
 
+## Reintegrated next-release priorities
+
+- Fix the reported Psycho Mantis intro crash from a captured first fault, then
+  confirm the encounter reaches playable combat. Preserve matching executable
+  and symbol evidence with the active script command and actor constructor.
+- Preserve Mantis's original statue fallback and Codec hints. Keep controller
+  slots stable: a verified different controller can use port 2; same or uncertain
+  reconnects retain original behavior. F2/L3+R3 remains an explicit full port-switch
+  fallback. Preserve boss phases and the original port-1 damage rules.
+- After the Mantis crash is fixed, add an optional Installed games memory mode
+  enabled by default for new launcher profiles, with an opt-out. Preserve saved
+  explicit choices. Scan only file/folder names with bounded depth and work limits,
+  case-insensitive title aliases and local deduplication; keep off/random/seed.
+  Verify Integral's actual dialogue flags. Other Life Azure Dreams is one title
+  trigger, not a separate fifth game. Discover configured Steam library paths
+  from their configuration without reading game, manifest or save contents.
+  Cover the requested standard Windows/Linux roots and accessible WSL mounts.
+- Track remaining intermittent floor/lighting texture flicker as longer-term
+  renderer work. The player has confirmed the specific Otacon desk-floor fix;
+  identify additional affected draws before extending ordering exceptions.
+- Finish accepting and consolidating the display, Codec, HUD and mission-log
+  candidate fixes while preserving the published package as rollback.
+- Pilot optional faithful high-resolution fonts and inventory icons: compare
+  original pixels, conservative raster upscaling and cleaned vector outlines
+  before selecting a runtime integration path. Retain original asset rendering.
+- Build a local asset importer for user-owned **Metal Gear Solid: Master
+  Collection Vol. 1**, starting with the Steam installation's Integral content.
+  Detect the installation and edition, identify archive/resource revisions,
+  extract supported assets into a separate local directory, and report whether
+  they are compatible with this runtime. Record provenance and missing resources;
+  do not redistribute game files or claim extraction alone enables gameplay.
+- Extend that importer to other Master Collection platforms and other owned
+  editions where their accessible file formats and asset compatibility are
+  understood. Track each source platform separately; Steam support does not
+  establish support for console packages. Preserve source installations and
+  existing disc-based launching. No DRM or platform-security bypass is planned.
+
+The sections below retain the upstream roadmap as historical project context.
+
 This roadmap separates delivered foundations from planned work. Future items
 have no committed delivery dates. The native main campaign is the starting
 point; the alpha's supported configuration is in [ALPHA.md](ALPHA.md).

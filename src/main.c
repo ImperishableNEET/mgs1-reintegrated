@@ -34,6 +34,8 @@ typedef struct {
     const char *text_pack, *voice_pack;
     int stage_explicit, stage_map, bonus_items, invulnerable;
     unsigned replay_tail_frames, mantis_memory_seed;
+    unsigned mantis_installed_mask;
+    int mantis_installed_mode;
     int replay_fast, debug_overlay, auto_card, texture_correction, geometry_precision, depth_buffer;
     int fast_loading;
     MgsVideoOptions video;
@@ -330,8 +332,21 @@ static int ParseOption(StartupOptions *options, const char *name, const char *va
             return 0;
         options->fast_loading = value[0] == '1';
     } else if (strcmp(name, "--mantis-memory") == 0) {
+        if (strcmp(value, "installed") == 0) {
+            options->mantis_installed_mode = 1;
+            return 1;
+        }
+        options->mantis_installed_mode = 0;
         return ParseFrameCount(value, &options->mantis_memory_seed) &&
                options->mantis_memory_seed <= 2147483647u;
+    } else if (strcmp(name, "--mantis-installed-mask") == 0) {
+        options->mantis_installed_mode = 2;
+        if (strcmp(value, "0") == 0) {
+            options->mantis_installed_mask = 0;
+            return 1;
+        }
+        return ParseFrameCount(value, &options->mantis_installed_mask) &&
+               (options->mantis_installed_mask & ~0x33u) == 0;
     } else if (strcmp(name, "--replay-tail-frames") == 0) {
         return ParseFrameCount(value, &options->replay_tail_frames);
     } else if (strcmp(name, "--frames") == 0 || strcmp(name, "--capture-every") == 0) {
@@ -412,7 +427,8 @@ static void PrintUsage(FILE *stream)
           "  --fast-loading 0|1 (accelerate map loading only)\n"
           "  --text-pack <pack.mgslang> --voice-pack <pack.mgslang>\n"
           "  --check-language <pack.mgslang> (validate without game boot)\n"
-          "  --mantis-memory SEED (1..2147483647; synthetic memory-card reading)\n"
+          "  --mantis-memory installed|SEED (local game names or synthetic memory-card reading)\n"
+          "  --mantis-installed-mask MASK (fixed local profile for reproducible runs; 0..51)\n"
           "  --stage <linked stage> [--stage-map id] --frames count\n"
           "  --record-input <path> | --replay-input <path>\n"
           "  --input-identity sha256 --replay-fast 0|1 --replay-tail-frames count\n"
@@ -472,6 +488,16 @@ int main(int argc, char **argv)
     MgsInvulnerabilityConfigure(options.invulnerable);
     MgsGameOptionsConfigure(options.auto_card);
     MgsMantisMemoryConfigure(options.mantis_memory_seed);
+    if (options.mantis_installed_mode) {
+        if (options.replay_input && options.mantis_installed_mode == 1) {
+            fputs("Replay requires the recorded --mantis-installed-mask value; live installed-game scanning is disabled.\n", stderr);
+            return 2;
+        }
+        unsigned mask = options.mantis_installed_mode == 1 ?
+            MgsMantisMemoryScanInstalled() : options.mantis_installed_mask;
+        MgsMantisMemoryConfigureInstalled(mask);
+        printf("Mantis installed-game profile: --mantis-installed-mask %u\n", mask);
+    }
     if (!MgsCheckpointConfigure(options.load_checkpoint))
         return 2;
     if (!MgsNativeConfigureStart(options.stage, options.stage_map))

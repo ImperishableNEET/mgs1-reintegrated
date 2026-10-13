@@ -1,0 +1,113 @@
+diff --git a/source/menu/life.c b/source/menu/life.c
+index b99091e..b7849f0 100644
+--- a/source/menu/life.c
++++ b/source/menu/life.c
+@@ -7,6 +7,9 @@
+ #include "font/font.h"
+ #include "menu/menuman.h"
+ #include "menu/radio.h"
++#ifdef MGS_NATIVE
++#include "mgs_video.h"
++#endif
+ 
+ MENU_BAR_CONF gSnakeLifeBarConfig_8009E5F4 = {"LIFE", {0x10, 0x8F, 0x7F}, {0x1F, 0xDF, 0x3F}, 0};
+ MENU_BAR_CONF gSnakeO2BarConfig_8009E600 = {"O2", {0x1F, 0x3F, 0xC0}, {0x1F, 0x7F, 0xFF}, 1};
+@@ -219,6 +222,11 @@ void menu_draw_bar(MenuPrim *prim, long x, long y, long rest, long now, long max
+ void menu_life_update_helper2_8003F30C(MenuPrim *prim, MenuMan_MenuBars *pBars)
+ {
+     MENU_BAR_CONF *pBar;
++    int bar_x = pBars->field_2_bar_x;
++
++#ifdef MGS_NATIVE
++    bar_x -= MgsVideoHalfWidth() - 160;
++#endif
+ 
+     pBar = &gSnakeLifeBarConfig_8009E5F4;
+     gSnakeLifeYPos_800ABAF0 = pBars->field_4_bar_y;
+@@ -239,7 +247,7 @@ void menu_life_update_helper2_8003F30C(MenuPrim *prim, MenuMan_MenuBars *pBars)
+     }
+ 
+     menu_draw_bar(prim,
+-                  pBars->field_2_bar_x,
++                  bar_x,
+                   pBars->field_4_bar_y,
+                   pBars->field_6_snake_hp,
+                   GM_Vitality,
+@@ -250,7 +258,7 @@ void menu_life_update_helper2_8003F30C(MenuPrim *prim, MenuMan_MenuBars *pBars)
+     if (pBars->field_1_O2_hp)
+     {
+         menu_draw_bar(prim,
+-                      pBars->field_2_bar_x,
++                      bar_x,
+                       pBars->field_4_bar_y + 12,
+                       GM_O2,
+                       GM_O2,
+@@ -263,7 +271,11 @@ void draw_life_defaultX_8003F408(MenuPrim *prim, long y, long rest, long now, lo
+ {
+     GM_GameStatus |= STATE_SHOW_LIFEBAR;
+     menu_draw_bar(prim,
++#ifdef MGS_NATIVE
++                  16 - (MgsVideoHalfWidth() - 160),
++#else
+                   16,
++#endif
+                   y + gSnakeLifeYPos_800ABAF0 - 16,
+                   rest,
+                   now,
+diff --git a/source/menu/menuman.c b/source/menu/menuman.c
+index c8ae576..c7b355e 100644
+--- a/source/menu/menuman.c
++++ b/source/menu/menuman.c
+@@ -9,6 +9,10 @@
+ #include "libdg/libdg.h"
+ #include "libgcl/libgcl.h"
+ #include "game/game.h"
++#ifdef MGS_NATIVE
++#include "mgs_video.h"
++extern PANEL_CONF stru_8009E544[2];
++#endif
+ 
+ static u_char SECTION(".bss") PrimBuffer[2][8192];
+ 
+@@ -63,8 +67,17 @@ static void Act(MenuWork *work)
+     int     idx_as_flag;
+     int     field_28_flags;
+     int     i;
++#ifdef MGS_NATIVE
++    int     hud_extra;
++#endif
+ 
+     pOtStart = (&menu_prim)->ot;
++#ifdef MGS_NATIVE
++    /* Anchor the two inventory panels without changing their sizes. */
++    hud_extra = MgsVideoHalfWidth() - 160;
++    stru_8009E544[0].field_0_xOffset = 16 - hud_extra;
++    stru_8009E544[1].field_0_xOffset = 256 + hud_extra;
++#endif
+     work->field_24_pInput = &GM_CurrentPadData[2];
+     menu_jimaku_act(work, pOtStart);
+     if ( ( !(GV_PauseLevel & GV_PAUSE_PAUSE) && (GM_LoadComplete > 0) ) &&
+diff --git a/source/menu/radar.c b/source/menu/radar.c
+index 82b646e..1d75c9d 100644
+--- a/source/menu/radar.c
++++ b/source/menu/radar.c
+@@ -1,4 +1,7 @@
+ #include "radar.h"
++#ifdef MGS_NATIVE
++#include "mgs_video.h"
++#endif
+ #include "menuman.h"
+ 
+ #include <stdlib.h>
+@@ -1200,6 +1203,11 @@ void menu_radar_update_8003B350(MenuWork *work, u_long *ot)
+ {
+     int pos;
+ 
++#ifdef MGS_NATIVE
++    /* The frame and its draw environment both use pos_x. */
++    work->radar.pos_x = MgsVideoHalfWidth() - 160;
++#endif
++
+     if (work->radar.display_flag)
+     {
+         if (work->field_2A_state == MENU_CLOSED)

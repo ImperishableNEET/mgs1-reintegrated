@@ -1,0 +1,167 @@
+diff --git a/source/font/font.c b/source/font/font.c
+--- a/source/font/font.c
++++ b/source/font/font.c
+@@ -10,6 +10,7 @@
+ #include "game/game.h"
+ #ifdef MGS_NATIVE
+ #include "mgs_language.h"
++#include "mgs_hires_font.h"
+ #endif
+ 
+ // This struct describes the structure of
+@@ -491,7 +492,7 @@
+ // The glyphs used for the ASCII range are 12 pixels tall with a width specified by bits 27:24.
+ // Each pixel in memory is 2 bits. It is combined with a 2-bit color index in the font buffer.
+ // The pixel can then be drawn using a 16 entry LUT on the GPU side.
+-static int put_hankaku_4bpp(char *buffer, int x, int y, int width, unsigned char code)
++static int put_hankaku_4bpp(KCB *kcb, char *buffer, int x, int y, int width, unsigned char code)
+ {
+     char *location, *location2, *location3, *location4, *locationIter;
+     char *font_location;
+@@ -517,6 +518,12 @@
+ #endif
+         result = (glyph >> 24) & 0xF;
+         loops = 12;
++#ifdef MGS_NATIVE
++        if (dword_800AB6B8)
++            MgsHiResFontUnsupported(kcb);
++        else
++            MgsHiResFontGlyph(kcb, code, x, y, font_color, result, glyph >> 28);
++#endif
+ 
+         if (dword_800AB6B8)
+         {
+@@ -591,6 +598,9 @@
+     }
+     else
+     {
++#ifdef MGS_NATIVE
++        MgsHiResFontUnsupported(kcb);
++#endif
+         if (code)
+         {
+             return 0;
+@@ -1099,7 +1109,7 @@
+ 
+             case CODE('-'):
+             case 0x9006:
+-                dx = put_hankaku_4bpp(font_buffer, x, y, width_info, 0);
++                dx = put_hankaku_4bpp(kcb, font_buffer, x, y, width_info, 0);
+                 goto block_155;
+ 
+             case CODE('S'):
+@@ -1164,6 +1174,9 @@
+             if (rubi_flag == 1 && (next_mdata == 0x9002 || next_mdata == 0x9004))
+             {
+                 draw_rubi_string(font_buffer, x, y, width_info, m + 2);
++#ifdef MGS_NATIVE
++                MgsHiResFontUnsupported(kcb);
++#endif
+             }
+ 
+             rubi_flag = 0;
+@@ -1254,7 +1267,7 @@
+         // is it an ASCII character?
+         if (next_mdata <= CODE(0xFF))
+         {
+-            dx = put_hankaku_4bpp(font_buffer, x, y, width_info, next_mdata & 0xFF);
++            dx = put_hankaku_4bpp(kcb, font_buffer, x, y, width_info, next_mdata & 0xFF);
+             dx += kcb->c_skip;
+             if (next_mdata == CODE('!') || next_mdata == CODE('?'))
+             {
+@@ -1276,6 +1289,9 @@
+         }
+         else
+         {
++#ifdef MGS_NATIVE
++            MgsHiResFontUnsupported(kcb);
++#endif
+             idx1 = get_zen_font_data(next_mdata);
+             if (idx1 > 0)
+             {
+@@ -1305,6 +1321,9 @@
+                 if (mdata & BACK_KINSOKU_MASK)
+                 {
+                     put_zenkaku_4bpp(font_buffer, x, y, width_info, 0);
++#ifdef MGS_NATIVE
++                    MgsHiResFontUnsupported(kcb);
++#endif
+                     m = m2;
+                     dx = 0;
+                 }
+@@ -1325,10 +1344,13 @@
+ 
+                             if ( IS_HANKAKU( next_mdata ) )
+                             {
+-                                dx += put_hankaku_4bpp(font_buffer, x + dx, y, width_info, next_mdata & 0xFF);
++                                dx += put_hankaku_4bpp(kcb, font_buffer, x + dx, y, width_info, next_mdata & 0xFF);
+                             }
+                             else
+                             {
++#ifdef MGS_NATIVE
++                                MgsHiResFontUnsupported(kcb);
++#endif
+                                 idx1 = get_zen_font_data(next_mdata);
+                                 if (idx1 > 0)
+                                 {
+@@ -1410,6 +1432,9 @@
+ 
+ void font_clear(KCB *kcb)
+ {
++#ifdef MGS_NATIVE
++    MgsHiResFontClear(kcb);
++#endif
+     int *font_buffer;
+     int  i;
+ 
+@@ -1428,6 +1453,9 @@
+ void font_update(KCB *kcb)
+ {
+     LoadImage(&kcb->rect, kcb->buffer);
++#ifdef MGS_NATIVE
++    MgsHiResFontUpdate(kcb, kcb->cbuffer);
++#endif
+ }
+ 
+ void font_clut_update(KCB *kcb)
+diff --git a/source/menu/radio.c b/source/menu/radio.c
+--- a/source/menu/radio.c
++++ b/source/menu/radio.c
+@@ -18,6 +18,7 @@
+ #include "game/game.h"
+ #ifdef MGS_NATIVE
+ #include "mgs_video.h"
++#include "mgs_hires_font.h"
+ /* Optional host enhancement: normal script execution, no clock acceleration.
+  * Only dialogue states use this; save/choice states retain original inputs. */
+ static int ReiCodecTurboHeld(unsigned short status, int flags)
+@@ -781,6 +782,9 @@
+ 
+         work->field_214_font = allocated_kcb;
+         memcpy(allocated_kcb, ptr_local_kcb, sizeof(KCB));
++#ifdef MGS_NATIVE
++        MgsHiResFontAttach(allocated_kcb);
++#endif
+ 
+         dword_800ABB04 = NULL;
+     }
+@@ -826,12 +830,19 @@
+     pPrim->y0 = 132;
+ 
+     setSprt(pPrim);
++#ifdef MGS_NATIVE
++    MgsHiResFontRegisterSprite(&pPrim->r0, kcb, pPrim->x0, pPrim->y0,
++                                pPrim->w, pPrim->h);
++#endif
+     addPrim(ot, pPrim);
+     return 1;
+ }
+ 
+ void sub_8004124C(MenuWork *work)
+ {
++#ifdef MGS_NATIVE
++    MgsHiResFontDetach(work->field_214_font);
++#endif
+     GV_FreeMemory(GV_PACKET_MEMORY0, work->field_214_font);
+     work->field_214_font = NULL;
+     dword_800ABB04 = NULL;

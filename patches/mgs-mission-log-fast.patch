@@ -1,0 +1,110 @@
+diff --git a/source/onoda/abst/ab_demo1.c b/source/onoda/abst/ab_demo1.c
+index c843818..3d93d84 100644
+--- a/source/onoda/abst/ab_demo1.c
++++ b/source/onoda/abst/ab_demo1.c
+@@ -4,6 +4,7 @@
+ #include "mts/mts.h"
+ 
+ #include <stdio.h>
++#include "mission_log_fast.h"
+ 
+ // Same struct as in abst.c (this is the "demo 1" UI variant).
+ typedef struct _Unknown
+@@ -544,6 +545,13 @@ static void Act(Work *work)
+ 
+     press = work->pad->press;
+ 
++    if (work->field_1D68 == 0)
++        ReiMissionLogAdvance(&work->field_1D60, 14);
++    else if (work->field_1D68 == 1)
++        ReiMissionLogAdvance(&work->field_1D60, 144);
++    else if (work->field_1D68 == 3)
++        ReiMissionLogAdvance(&work->field_1D60, 96);
++
+     work->primbuf.next = work->primbuf.buf[GV_Clock];
+     work->primbuf.ot = DG_Chanl(1)->ot[GV_Clock];
+ 
+diff --git a/source/onoda/abst/ab_demo2.c b/source/onoda/abst/ab_demo2.c
+index cd2cca8..7009e2e 100644
+--- a/source/onoda/abst/ab_demo2.c
++++ b/source/onoda/abst/ab_demo2.c
+@@ -5,6 +5,7 @@
+ #include "mts/mts.h"
+ 
+ #include <stdio.h>
++#include "mission_log_fast.h"
+ 
+ typedef struct _Unknown
+ {
+@@ -614,6 +615,13 @@ static void Act(Work *work)
+ 
+     press = work->pad->press;
+ 
++    if (work->field_3830 == 0)
++        ReiMissionLogAdvance(&work->field_3828, 14);
++    else if (work->field_3830 == 1)
++        ReiMissionLogAdvance(&work->field_3828, 144);
++    else if (work->field_3830 == 3)
++        ReiMissionLogAdvance(&work->field_3828, 96);
++
+     work->primbuf.next = work->primbuf.buf[GV_Clock];
+     work->primbuf.ot = DG_Chanl(1)->ot[GV_Clock];
+ 
+diff --git a/source/onoda/abst/abst.c b/source/onoda/abst/abst.c
+index e837da3..e796ec3 100644
+--- a/source/onoda/abst/abst.c
++++ b/source/onoda/abst/abst.c
+@@ -4,6 +4,7 @@
+ #include "mts/mts.h"
+ 
+ #include <stdio.h>
++#include "mission_log_fast.h"
+ 
+ // FIXME: it's the same struct as in change.c (in change overlay)
+ typedef struct _Unknown
+@@ -487,6 +488,13 @@ void func_800C5410(Work *work)
+ 
+     press = work->pad->press;
+ 
++    if (work->field_1D64 == 0)
++        ReiMissionLogAdvance(&work->field_1D5C, 14);
++    else if (work->field_1D64 == 1)
++        ReiMissionLogAdvance(&work->field_1D5C, 144);
++    else if (work->field_1D64 == 3)
++        ReiMissionLogAdvance(&work->field_1D5C, 96);
++
+     work->primbuf.next = work->primbuf.buf[GV_Clock];
+     work->primbuf.ot = DG_Chanl(1)->ot[GV_Clock];
+ 
+diff --git a/source/onoda/abst/mission_log_fast.h b/source/onoda/abst/mission_log_fast.h
+new file mode 100644
+--- /dev/null
++++ b/source/onoda/abst/mission_log_fast.h
+@@ -0,0 +1,27 @@
++#ifndef REI_MISSION_LOG_FAST_H
++#define REI_MISSION_LOG_FAST_H
++
++#include <stdlib.h>
++
++/* Optional launcher presentation setting. Direct engine launches keep PS1 timing. */
++static void ReiMissionLogAdvance(int *frame, int final_frame)
++{
++    static int enabled = -1;
++
++    if (enabled < 0)
++    {
++        const char *value = getenv("REI_MISSION_LOG_FAST");
++        enabled = value && value[0] == '1' && value[1] == '\0';
++    }
++
++    if (enabled && *frame > 0 && *frame < final_frame)
++    {
++        *frame += 3;
++        if (*frame > final_frame)
++        {
++            *frame = final_frame;
++        }
++    }
++}
++
++#endif

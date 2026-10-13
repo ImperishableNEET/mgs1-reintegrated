@@ -1,4 +1,5 @@
 #include "mgs_native.h"
+#include "mgs_mantis_memory.h"
 #undef fprintf
 #include "overlays/s07b/chara/meryl07b/meryl07b.h"
 #include "overlays/s07b/chara/psyco/psyco_work.h"
@@ -11,6 +12,7 @@ SVECTOR DG_ZeroVector;
 DG_CHANL DG_Chanls[3];
 int GV_Time;
 short linkvarbuf[96];
+int MgsMantisMemoryInstalledEnabled(void) { return 0; }
 #include "mantis_helpers.inc"
 #include "mantis_memory.inc"
 
@@ -178,6 +180,17 @@ static void TestMemoryProfile(void)
     assert(s07b_800D8410(cards) == TITLE_CASTLEVANIA);
     memcpy(first.files[0].name, "BIUNKNOWN-0", sizeof("BIUNKNOWN-0"));
     assert(s07b_800D8410(cards) == 0);
+
+    for (unsigned requested = 0; requested <= 0x33; ++requested) {
+        unsigned expected = requested & 0x33;
+        NativeInstalledProfile(&first, requested);
+        cards[1] = NULL;
+        assert(first.file_count == ((expected & 1) != 0) + ((expected & 2) != 0) +
+                                   ((expected & 0x10) != 0) + ((expected & 0x20) != 0));
+        assert((s07b_800D8410(cards) & 0x33) == expected);
+    }
+    NativeInstalledProfile(&first, 0);
+    assert(first.file_count == 0 && s07b_800D8410(cards) == 0);
 }
 
 int main(void)

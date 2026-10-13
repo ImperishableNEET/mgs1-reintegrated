@@ -187,6 +187,9 @@ health hooks also cover gas, drowning, electrical damage, torture, rappelling,
 the Liquid fight, and the garage/jeep player actors. Scripted deaths, falling
 out of the level, timers and other mission-failure conditions still apply;
 this option does not suppress `GM_GameOver` globally or protect other actors.
+The Tank Hangar supply tunnel's gas actor with an explicit scripted failure callback retains its
+lethal oxygen-depleted damage path, so a sealed laser-triggered gas trap can reach its
+original Game Over instead of leaving an invulnerable player trapped indefinitely.
 
 The raw executable accepts `--invulnerable 1` (default `0`). This is a launch
 setting, not an invulnerability flag written into saves. Saved health can of
@@ -400,6 +403,13 @@ Implementation: [game adapter](../src/mgs_input_movie.c),
 [session and save isolation](../tools/input-session.ps1).
 
 ## Validation status
+
+Installed-game Mantis memory reading resolves to a local four-title mask once
+at launch. The engine log prints `--mantis-installed-mask N`; use that exact
+argument for replay instead of `--mantis-memory installed`, which is rejected
+during replay. The input movie format remains unchanged. Validation commands
+continue to default to memory reading off; synthetic seed recordings keep their
+existing behavior.
 
 The file parser, save isolation, input sampling, both virtual-controller ports,
 stick quantization, keyboard mapping and replay rumble suppression have passing

@@ -18,6 +18,9 @@ namespace ReIntegral
         public bool Fullscreen;
         public bool Scanlines;
         public bool CodecTurbo = true;
+        public bool SharpCodecFont;
+        public bool MissionLogFast = true;
+        public bool FirstPersonMoveShoot;
         public bool TextureCorrection;
         public bool GeometryPrecision;
         public bool DepthBuffer;
@@ -26,7 +29,7 @@ namespace ReIntegral
         public bool AutoCard;
         public bool FastLoading;
         public bool DebugOverlay;
-        public string MantisMemory = "off";
+        public string MantisMemory = "installed";
         public string Stage = "title";
         public string Frames = "0";
         public string Advanced = "";

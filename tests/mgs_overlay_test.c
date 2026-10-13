@@ -6,6 +6,7 @@
 
 int OverlayActorAInitial(void);
 int OverlayActorBInitial(void);
+int OverlayActorBDispatch(unsigned index);
 void OverlayActorAMutate(void);
 void OverlayActorBMutate(void);
 
@@ -15,6 +16,7 @@ int main(void)
 {
     size_t count = sizeof(overlay_regions) / sizeof(overlay_regions[0]);
     assert(count == 2);
+    assert(OverlayActorBDispatch((unsigned)count) == 1);
     assert(MgsOverlayCapture(overlay_regions, count));
     assert(OverlayActorAInitial() && OverlayActorBInitial());
     OverlayActorAMutate();

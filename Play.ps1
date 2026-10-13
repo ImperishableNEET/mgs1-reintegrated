@@ -4,7 +4,12 @@ param(
     [string]$Executable,
     [string]$Resolution = '640x480',
     [switch]$Scanlines,
-    [switch]$CodecTurbo = $true
+    [switch]$CodecTurbo = $true,
+    [switch]$MissionLogFast = $true,
+    [switch]$SharpCodecFont,
+    [switch]$FirstPersonMoveShoot,
+    [ValidatePattern('^(installed|random|off|[1-9][0-9]{0,9})$')]
+    [string]$MantisMemory = 'installed'
 )
 $ErrorActionPreference = 'Stop'
 $localRoot = Join-Path $env:LOCALAPPDATA 'MGS-Reintegrated'
@@ -26,7 +31,7 @@ if (-not $Executable) {
 if (-not $Executable) { throw 'Build the modern renderer first; see README.md.' }
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 @{disc=$Disc;discTwo=$DiscTwo} | ConvertTo-Json | Set-Content -LiteralPath $configPath -Encoding UTF8
-$names = @('REI_ENGLISH_CAPTIONS','REI_ORIGINAL_RES','REI_REINTEGRATED_TITLE','REI_SCANLINES','REI_CODEC_TURBO','REI_TITLE_HOLD','REI_TITLE_PREVIEW','REI_PROBE_STICK','REI_WINDOW_SMOKE','REI_PROBE_CODEC_TURBO','REI_PROBE_CODEC_RELEASE')
+$names = @('REI_ENGLISH_CAPTIONS','REI_ORIGINAL_RES','REI_REINTEGRATED_TITLE','REI_SCANLINES','REI_CODEC_TURBO','REI_MISSION_LOG_FAST','REI_FIRST_PERSON_MOVE_SHOOT','REI_CODEC_FONT_ATLAS','REI_TITLE_HOLD','REI_TITLE_PREVIEW','REI_PROBE_STICK','REI_WINDOW_SMOKE','REI_PROBE_CODEC_TURBO','REI_PROBE_CODEC_RELEASE')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name,'Process'); [Environment]::SetEnvironmentVariable($name,$null,'Process') }
 try {
@@ -35,7 +40,18 @@ try {
     $env:REI_REINTEGRATED_TITLE='1'
     if ($Scanlines) { $env:REI_SCANLINES='1' }
     if ($CodecTurbo) { $env:REI_CODEC_TURBO='1' }
+    $env:REI_MISSION_LOG_FAST = if ($MissionLogFast) { '1' } else { '0' }
+    $env:REI_FIRST_PERSON_MOVE_SHOOT = if ($FirstPersonMoveShoot) { '1' } else { '0' }
+    if ($SharpCodecFont) {
+        $atlas = Join-Path (Split-Path -Parent $Executable) 'fonts/texgyreheros_regular_ascii8x_coverage.bmp'
+        if (-not (Test-Path -LiteralPath $atlas)) { throw "Sharp Codec font atlas is missing: $atlas" }
+        $env:REI_CODEC_FONT_ATLAS = $atlas
+    }
     $gameArgs = @('--disc',$Disc,'--resolution',$Resolution)
+    if ($MantisMemory -ne 'off') {
+        $memoryValue = if ($MantisMemory -eq 'random') { (Get-Random -Minimum 1 -Maximum 2147483647).ToString() } else { $MantisMemory }
+        $gameArgs += @('--mantis-memory', $memoryValue)
+    }
     if ($DiscTwo) { $gameArgs += @('--disc-two',$DiscTwo) }
     Push-Location $localRoot
     try {

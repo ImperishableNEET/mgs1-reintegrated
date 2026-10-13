@@ -1,0 +1,318 @@
+diff --git a/source/chara/snake/sna_init.c b/source/chara/snake/sna_init.c
+index 61985ea..5e60283 100644
+--- a/source/chara/snake/sna_init.c
++++ b/source/chara/snake/sna_init.c
+@@ -330,7 +330,7 @@ void sub_8004EB74(SnaInitWork *work)
+     work->field_A56 = 0;
+     GM_SetPlayerStatusFlag(PLAYER_WATCH);
+ 
+-    if (GM_FirstPerson == 0)
++    if (GM_FirstPersonActive == 0)
+     {
+         GM_SetPlayerStatusFlag(PLAYER_MENU_DISABLE);
+     }
+@@ -1831,7 +1831,7 @@ static inline int sna_weapon_switching_helper_800511BC(SnaInitWork *work)
+ {
+     int flag;
+ 
+-    flag = (GM_FirstPerson != 0) ? 1024 : 1;
++    flag = (GM_FirstPersonActive != 0) ? 1024 : 1;
+ 
+     if (sna_check_flags1_8004E31C(work, SNA_FLAG1_UNK5))
+     {
+@@ -1959,13 +1959,13 @@ void sna_weapon_switching_800511BC(SnaInitWork *work, int callback)
+     {
+         sub_8004EB74(work);
+ 
+-        if (GM_FirstPerson != 0)
++        if (GM_FirstPersonActive != 0)
+         {
+             GM_SetPlayerStatusFlag(PLAYER_STILL_WATCH);
+             sna_clear_flags2_8004E344(work, SNA_FLAG2_UNK6 | SNA_FLAG2_UNK5);
+         }
+     }
+-    else if (!GM_CheckPlayerStatusFlag(PLAYER_INTRUDE) && ((GM_FirstPerson == 0) || !(work->field_898_flags2 & 0x10)))
++    else if (!GM_CheckPlayerStatusFlag(PLAYER_INTRUDE) && ((GM_FirstPersonActive == 0) || !(work->field_898_flags2 & 0x10)))
+     {
+         sna_8004EC00(work);
+     }
+@@ -2147,7 +2147,7 @@ void sna_800515BC(SnaInitWork *work, int a2)
+     {
+         sub_8004EB74(work);
+ 
+-        if ( GM_FirstPerson != 0 )
++        if ( GM_FirstPersonActive != 0 )
+         {
+             GM_SetPlayerStatusFlag(PLAYER_STILL_WATCH);
+             sna_clear_flags2_8004E344(work, 0x30);
+@@ -2156,7 +2156,7 @@ void sna_800515BC(SnaInitWork *work, int a2)
+         GM_SetPlayerStatusFlag(PLAYER_WEAPON_DISABLE);
+     } else if ( !(work->field_920_tbl & 0x200) &&
+                 !GM_CheckPlayerStatusFlag(PLAYER_INTRUDE) &&
+-                ((GM_FirstPerson == 0) || ((work->field_898_flags2 & 0x10) == 0)) )
++                ((GM_FirstPersonActive == 0) || ((work->field_898_flags2 & 0x10) == 0)) )
+     {
+         sna_8004EC00(work);
+     }
+@@ -2452,7 +2452,7 @@ void sna_fn_80052120(SnaInitWork *work, int time)
+ 
+     if (GM_CheckPlayerStatusFlag(PLAYER_INTRUDE) != 0)
+     {
+-        if (GM_FirstPerson == 0)
++        if (GM_FirstPersonActive == 0)
+         {
+             sna_8004EC00(work);
+         }
+@@ -2472,7 +2472,7 @@ void sna_fn_80052120(SnaInitWork *work, int time)
+ 
+         if ((work->field_9B0_pad_ptr->status & PAD_TRIANGLE) == 0)
+         {
+-            if (GM_FirstPerson == 0)
++            if (GM_FirstPersonActive == 0)
+             {
+                 sna_8004EC00(work);
+             }
+@@ -2619,7 +2619,7 @@ void sna_fn_80052540(SnaInitWork *work, int time)
+ {
+     if ((work->field_9B0_pad_ptr->status & PAD_TRIANGLE) == 0)
+     {
+-        if (GM_FirstPerson == 0)
++        if (GM_FirstPersonActive == 0)
+         {
+             sna_8004EC00(work);
+         }
+@@ -2652,7 +2652,7 @@ void sna_fn_800525F8(SnaInitWork *work, int time)
+ 
+     if (!(work->field_9B0_pad_ptr->status & PAD_TRIANGLE))
+     {
+-        if (!GM_FirstPerson)
++        if (!GM_FirstPersonActive)
+         {
+             sna_8004EC00(work);
+         }
+@@ -2680,7 +2680,7 @@ void sna_act_helper2_helper_helper_800526BC(SnaInitWork *work, int time)
+                                      | PLAYER_NORMAL_WATCH
+                                      | PLAYER_WATCH);
+         }
+-        else if (!GM_FirstPerson)
++        else if (!GM_FirstPersonActive)
+         {
+             sna_8004EC00(work);
+         }
+@@ -5488,7 +5488,7 @@ void sna_anim_psg1_80056DDC(SnaInitWork *work, int time)
+         sub_8004EB74(work);
+         GM_SetPlayerStatusFlag(PLAYER_NORMAL_WATCH);
+ 
+-        if (GM_FirstPerson != 0)
++        if (GM_FirstPersonActive != 0)
+         {
+             GM_SetPlayerStatusFlag(PLAYER_STILL_WATCH);
+         }
+@@ -7639,7 +7639,7 @@ static inline int sna_init_main_logic_helper6_helper_800596FC(SnaInitWork *work,
+         return 0;
+     }
+ 
+-    if ((GM_FirstPerson != 0) && !(work->field_898_flags2 & 0x10))
++    if ((GM_FirstPersonActive != 0) && !(work->field_898_flags2 & 0x10))
+     {
+         return 0;
+     }
+@@ -7677,7 +7677,7 @@ static inline void sna_init_main_logic_helper6_800596FC(SnaInitWork *work)
+ {
+     int flags;
+ 
+-    if (GM_FirstPerson == 0)
++    if (GM_FirstPersonActive == 0)
+     {
+         if ((work->field_9B0_pad_ptr->press & PAD_TRIANGLE) &&
+             sna_init_main_logic_helper6_helper_800596FC(work, PLAYER_WATCH | PLAYER_ATTACK))
+@@ -7719,7 +7719,7 @@ static inline void sna_init_main_logic_helper6_800596FC(SnaInitWork *work)
+ 
+         flags = PLAYER_ATTACK;
+ 
+-        if (GM_FirstPerson == 0)
++        if (GM_FirstPersonActive == 0)
+         {
+             flags |= PLAYER_WATCH;
+         }
+@@ -7851,7 +7851,7 @@ void sna_init_main_logic_800596FC(SnaInitWork *work)
+     frame = work->field_9BC_anim_frame++;
+     work->field_9B8_fn_anim(work, frame);
+ 
+-    if ( GM_FirstPerson != 0 )
++    if ( GM_FirstPersonActive != 0 )
+     {
+         var_v0_8 = sna_sub_8004E358(work, SNA_FLAG2_UNK6);
+     }
+@@ -8011,6 +8011,19 @@ static void Act(SnaInitWork *work)
+         return;
+     }
+ 
++#ifdef MGS_NATIVE
++    /* The launch-only Integral override is not stored in linkvarbuf. Exit
++     * its camera once on demo entry without arming the raw save-state restore. */
++    if (MgsFirstPersonMoveShootEnabled() && GM_FirstPerson == 0 &&
++        (GM_GameStatus & STATE_PADDEMO) && GM_Camera.first_person == 1 &&
++        !GM_CheckPlayerStatusFlag(PLAYER_INTRUDE) &&
++        !(work->field_9B0_pad_ptr->status & PAD_TRIANGLE))
++    {
++        sna_8004EC00(work);
++        work->control.turn.vx = work->field_A2A;
++    }
++#endif
++
+     if ( (GM_FirstPerson != 0) && (GM_GameStatus & STATE_PADDEMO) )
+     {
+         if ( !GM_CheckPlayerStatusFlag(PLAYER_INTRUDE) && !(work->field_9B0_pad_ptr->status & PAD_TRIANGLE) )
+diff --git a/source/chara/snake/snake.c b/source/chara/snake/snake.c
+index bd5123e..fc2ab63 100644
+--- a/source/chara/snake/snake.c
++++ b/source/chara/snake/snake.c
+@@ -125,7 +125,7 @@ unsigned int sna_sub_8004E358(SnaInitWork *snake, SnaFlag2 param_2)
+ {
+     unsigned int result = 0;
+ 
+-    if (GM_FirstPerson != 0)
++    if (GM_FirstPersonActive != 0)
+     {
+         result = (((unsigned int)snake->field_898_flags2 & param_2) != result);
+     }
+diff --git a/source/game/evpanel.c b/source/game/evpanel.c
+index 90ac2f7..b57b5bb 100644
+--- a/source/game/evpanel.c
++++ b/source/game/evpanel.c
+@@ -530,7 +530,7 @@ static void Act(Work *work)
+             {
+                 if ((GM_Camera.first_person != 0) || (GM_PlayerStatus & PLAYER_WATCH))
+                 {
+-                    if ((GM_FirstPerson == 0) || !(GM_PlayerStatus & PLAYER_MOVE_WATCH))
++                    if ((GM_FirstPersonActive == 0) || !(GM_PlayerStatus & PLAYER_MOVE_WATCH))
+                     {
+                         break;
+                     }
+diff --git a/source/include/linkvar.h b/source/include/linkvar.h
+index 45142c6..7fc0e9d 100644
+--- a/source/include/linkvar.h
++++ b/source/include/linkvar.h
+@@ -141,6 +141,25 @@
+ #define GM_LastSaveSeconds      linkvarbuf[ 94 ]
+ #define GM_FirstPerson          linkvarbuf[ 95 ]
+ 
++#ifdef MGS_NATIVE
++#include <stdlib.h>
++/* Integral's move-and-fire gates read this value. The optional launcher
++ * override stays outside linkvarbuf, so loading and saving keep their
++ * original game state, including the player's difficulty and unlocks. */
++static inline int MgsFirstPersonMoveShootEnabled(void)
++{
++    static int enabled = -1;
++    if (enabled >= 0)
++        return enabled;
++    const char *value = getenv("REI_FIRST_PERSON_MOVE_SHOOT");
++    enabled = value && value[0] == '1' && value[1] == '\0';
++    return enabled;
++}
++#define GM_FirstPersonActive (GM_FirstPerson ? GM_FirstPerson : (MgsFirstPersonMoveShootEnabled() && !(GM_GameStatus & STATE_PADDEMO)))
++#else
++#define GM_FirstPersonActive GM_FirstPerson
++#endif
++
+ /*---------------------------------------------------------------------------*/
+ 
+ #define MAX_LINKVARBUF 96
+diff --git a/source/libhzd/bind.c b/source/libhzd/bind.c
+index 3d6198d..bd03302 100644
+--- a/source/libhzd/bind.c
++++ b/source/libhzd/bind.c
+@@ -264,7 +264,7 @@ static inline int HZD_helper2_80029D50(HZD_BND *pBind, HZD_EVT *event)
+         }
+         else if (GM_PlayerStatus != 0)
+         {
+-            if ((GM_FirstPerson != 0) && !(GM_PlayerStatus & PLAYER_INTRUDE))
++            if ((GM_FirstPersonActive != 0) && !(GM_PlayerStatus & PLAYER_INTRUDE))
+             {
+                 mask = 0xFFF4C011;
+             }
+diff --git a/source/overlays/s07b/chara/meryl07b/meryl07b.c b/source/overlays/s07b/chara/meryl07b/meryl07b.c
+index 70bc668..db60db8 100644
+--- a/source/overlays/s07b/chara/meryl07b/meryl07b.c
++++ b/source/overlays/s07b/chara/meryl07b/meryl07b.c
+@@ -348,7 +348,7 @@ void s07b_800C4B58(Meryl07bWork *work)
+          && (GM_WeaponTypes[GM_Weapon + 1] & 0x200) == 0
+          && (GM_ItemTypes[GM_Item + 1] & 2) == 0
+          && (GM_PlayerStatus & 0x800) == 0
+-         && (GM_FirstPerson == 0 || GM_FirstPerson == 1 && (GM_PlayerStatus & 0x400) != 0)
++         && (GM_FirstPersonActive == 0 || GM_FirstPersonActive == 1 && (GM_PlayerStatus & 0x400) != 0)
+          && GM_Camera.first_person != 0 )
+   {
+     work->flags_84c = flags_84c | 1;
+@@ -2989,7 +2989,7 @@ void s07b_800C9738(Meryl07bWork *work, int time)
+     {
+       action = work->action;
+       if ( (action == s07b_800C7D88 || action == s07b_800C7E98)
+-        && (GM_Camera.first_person == 0 || GM_FirstPerson != 0 && (GM_PlayerStatus & 0x40000) != 0)
++        && (GM_Camera.first_person == 0 || GM_FirstPersonActive != 0 && (GM_PlayerStatus & 0x40000) != 0)
+         && (GM_PlayerStatus & 0x300) == 0
+         && dword_8009F470 == 0
+         && s07b_800C46F0(GM_PlayerControl, work->traps[3], 1) != 0
+diff --git a/source/overlays/s07b/chara/psyco/psyco.c b/source/overlays/s07b/chara/psyco/psyco.c
+index 5c50fcb..f655ba5 100644
+--- a/source/overlays/s07b/chara/psyco/psyco.c
++++ b/source/overlays/s07b/chara/psyco/psyco.c
+@@ -443,7 +443,7 @@ LABEL_28:
+       && (GM_WeaponTypes[GM_Weapon + 1] & 0x200) == 0
+       && (GM_ItemTypes[GM_Item + 1] & 2) == 0
+       && (GM_PlayerStatus & 0x800) == 0
+-      && (GM_FirstPerson == 0 || GM_FirstPerson == 1 && (GM_PlayerStatus & 0x400) != 0)
++      && (GM_FirstPersonActive == 0 || GM_FirstPersonActive == 1 && (GM_PlayerStatus & 0x400) != 0)
+       && GM_Camera.first_person != 0 )
+     {
+       work->field_84C = v2 | 1;
+diff --git a/source/takabe/rasen.c b/source/takabe/rasen.c
+index 12912fe..5eb0fce 100644
+--- a/source/takabe/rasen.c
++++ b/source/takabe/rasen.c
+@@ -687,7 +687,7 @@ void RasenAct_800CB530(Work *work)
+ 
+     if (GM_WhereList[0]->name)
+     {
+-        if (GM_FirstPerson || GM_Camera.first_person == 0 || (GM_Camera.flag & 0x200))
++        if (GM_FirstPersonActive || GM_Camera.first_person == 0 || (GM_Camera.flag & 0x200))
+         {
+             level = GM_PlayerControl->levels[0] + 1100;
+ 
+diff --git a/source/takabe/rasen_el.c b/source/takabe/rasen_el.c
+index faa5940..b4f8d46 100644
+--- a/source/takabe/rasen_el.c
++++ b/source/takabe/rasen_el.c
+@@ -645,7 +645,7 @@ void s11c_800CD340(Work *work, int arg1)
+         if (work->f2D4 == 0)
+         {
+             if (GM_Camera.first_person == 1 &&
+-                (GM_FirstPerson == 0 || (GM_FirstPerson == 1 && !(GM_PlayerStatus & PLAYER_MOVE_WATCH))))
++                (GM_FirstPersonActive == 0 || (GM_FirstPersonActive == 1 && !(GM_PlayerStatus & PLAYER_MOVE_WATCH))))
+             {
+                 printf("cancel\n");
+                 work->f2D8 = -1;
+diff --git a/source/weapon/socom.c b/source/weapon/socom.c
+index cd1bf65..f976baf 100644
+--- a/source/weapon/socom.c
++++ b/source/weapon/socom.c
+@@ -117,7 +117,7 @@ static void socom_act_helper_8006528C(Work *work)
+         primsOrig = 10240;
+     }
+ 
+-    if (GM_FirstPerson && GM_Camera.first_person)
++    if (GM_FirstPersonActive && GM_Camera.first_person)
+     {
+         primsOrig += 515;
+     }
+@@ -242,7 +242,7 @@ static void Act( Work *work )
+ 
+     flags = *work->flags;
+ 
+-    if ( !GM_FirstPerson )
++    if ( !GM_FirstPersonActive )
+     {
+         word_800AB824 = -215;
+ 

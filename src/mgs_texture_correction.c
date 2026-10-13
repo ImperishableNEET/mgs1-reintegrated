@@ -11,6 +11,7 @@ typedef struct {
     const void *address;
     uint32_t xy;
     PsyzProjectedVertex vertex;
+    int flags;
 } VertexDepth;
 
 typedef struct {
@@ -88,7 +89,7 @@ void MgsTextureCorrectionBegin(int frame)
     current->count = 0;
 }
 
-static void SetVertex(const void *xy, PsyzProjectedVertex vertex)
+static void SetVertex(const void *xy, PsyzProjectedVertex vertex, int flags)
 {
     if (!correction_enabled || !xy)
         return;
@@ -100,6 +101,7 @@ static void SetVertex(const void *xy, PsyzProjectedVertex vertex)
     entry->address = xy;
     memcpy(&entry->xy, xy, sizeof(entry->xy));
     entry->vertex = vertex;
+    entry->flags = flags;
 }
 
 int MgsTextureCorrectionGet(const void *xy, PsyzProjectedVertex *vertex)
@@ -112,7 +114,14 @@ int MgsTextureCorrectionGet(const void *xy, PsyzProjectedVertex *vertex)
     if (!entry->address || entry->xy != packed || entry->vertex.depth <= 0)
         return 0;
     *vertex = entry->vertex;
-    return 1;
+    return entry->flags;
+}
+
+void MgsTextureCorrectionOrderOnly(const void *xy)
+{
+    PsyzProjectedVertex vertex;
+    int flags = MgsTextureCorrectionGet(xy, &vertex);
+    if (flags) SetVertex(xy, vertex, flags | PSYZ_GEOMETRY_ORDERED);
 }
 
 int MgsTextureCorrectionArea(const void *const xy[4], int original)
@@ -152,7 +161,7 @@ void MgsTextureCorrectionCapture(const SVECTOR *vertices, int count, const DVECT
     MATRIX matrix;
     ReadRotMatrix(&matrix);
     for (int i = 0; i < count; ++i)
-        SetVertex(xy + i, Project(&matrix, vertices + i));
+        SetVertex(xy + i, Project(&matrix, vertices + i), PSYZ_GEOMETRY_VALID);
 }
 
 void MgsTextureCorrectionProject(const void *xy, const SVECTOR *vertex)
@@ -160,27 +169,31 @@ void MgsTextureCorrectionProject(const void *xy, const SVECTOR *vertex)
     if (!correction_enabled) return;
     MATRIX matrix;
     ReadRotMatrix(&matrix);
-    SetVertex(xy, Project(&matrix, vertex));
+    SetVertex(xy, Project(&matrix, vertex), PSYZ_GEOMETRY_VALID);
 }
 
 void MgsTextureCorrectionCopy(const void *destination, const void *source)
 {
     if (!correction_enabled) return;
     PsyzProjectedVertex vertex = {0};
-    MgsTextureCorrectionGet(source, &vertex);
-    SetVertex(destination, vertex);
+    int flags = MgsTextureCorrectionGet(source, &vertex);
+    SetVertex(destination, vertex, flags);
 }
 
 void MgsTextureCorrectionMidpoint(const void *destination, const void *first, const void *second)
 {
     if (!correction_enabled) return;
     PsyzProjectedVertex a, b, midpoint = {0};
-    if (MgsTextureCorrectionGet(first, &a) && MgsTextureCorrectionGet(second, &b)) {
+    int first_flags = MgsTextureCorrectionGet(first, &a);
+    int second_flags = MgsTextureCorrectionGet(second, &b);
+    int flags = 0;
+    if (first_flags && second_flags) {
+        flags = first_flags | second_flags;
         double depth = (double)a.depth + b.depth;
         /* A model-space midpoint projects with depth-weighted screen coordinates. */
         midpoint.x = (float)((a.x * (double)a.depth + b.x * (double)b.depth) / depth);
         midpoint.y = (float)((a.y * (double)a.depth + b.y * (double)b.depth) / depth);
         midpoint.depth = (float)(depth * 0.5);
     }
-    SetVertex(destination, midpoint);
+    SetVertex(destination, midpoint, flags);
 }

@@ -1,0 +1,250 @@
+--- a/psyz/src/platform/sdl3_common.h
++++ b/psyz/src/platform/sdl3_common.h
+@@ -583,6 +583,8 @@
+     return 0;
+ }
+ 
++#include "gamepad_slots.h"
++
+ struct Gamepad {
+     SDL_JoystickID id;
+     SDL_Gamepad* dev;
+@@ -590,9 +592,15 @@
+ };
+ static bool is_pads_init = false;
+ static struct Gamepad gamepads[16] = {0};
++static PsyzGamepadSlot gamepad_slots[16] = {0};
++
++static int HostGamepadSlot(int port) {
++    return PsyzGamepadHostSlot(gamepad_slots, LEN(gamepad_slots), port,
++        SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
++}
+ 
+ int Psyz_PadsSupportsRumble(int port) {
+-    port = Psyz_PadsHostPort(port);
++    port = HostGamepadSlot(Psyz_PadsHostPort(port));
+     if (port < 0 || port >= 2 || !gamepads[port].dev) {
+         return 0;
+     }
+@@ -605,7 +613,7 @@
+     if (!Psyz_PadsSupportsRumble(port)) {
+         return 0;
+     }
+-    port = Psyz_PadsHostPort(port);
++    port = HostGamepadSlot(Psyz_PadsHostPort(port));
+     return SDL_RumbleGamepad(gamepads[port].dev, low, high, duration_ms);
+ }
+ 
+@@ -613,6 +621,23 @@
+ #ifdef PLATFORM_IOS
+     Psyz_IosSetTouchControlsVisible(is_pads_init && !gamepads[0].dev);
+ #endif
++}
++
++/* Collapse transport and revision differences: moving a DualSense between
++ * USB ports or USB/Bluetooth cannot turn it into a different controller. */
++static int GamepadPhysicalFamily(SDL_Gamepad *dev) {
++    switch (SDL_GetRealGamepadType(dev)) {
++    case SDL_GAMEPAD_TYPE_PS3:
++    case SDL_GAMEPAD_TYPE_PS4:
++    case SDL_GAMEPAD_TYPE_PS5: return 1;
++    case SDL_GAMEPAD_TYPE_XBOX360:
++    case SDL_GAMEPAD_TYPE_XBOXONE: return 2;
++    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
++    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
++    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
++    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return 3;
++    default: return 0;
++    }
+ }
+ 
+ static void AddGamepad(SDL_JoystickID id) {
+@@ -622,25 +647,38 @@
+             return;
+         }
+     }
+-    for (i = 0; i < LEN(gamepads); i++) {
+-        if (!gamepads[i].id) {
+-            break;
+-        }
+-    }
+-    if (i == LEN(gamepads)) {
+-        ERRORF("too many gamepads connected");
+-        return;
+-    }
+-
+     SDL_Gamepad* dev = SDL_OpenGamepad(id);
+     if (!dev) {
+         ERRORF("failed to open gamepad %d", (int)id);
+         return;
+     }
++    const char *serial = SDL_GetGamepadSerial(dev);
++    int family = GamepadPhysicalFamily(dev);
++    int identity_ports = SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false);
++    i = PsyzGamepadChooseSlot(gamepad_slots, LEN(gamepad_slots), serial,
++        family, identity_ports);
++    if (i < 0) {
++        if (i == -2) WARNF("ignored duplicate gamepad identity");
++        else ERRORF("too many gamepads connected");
++        SDL_CloseGamepad(dev);
++        return;
++    }
++    const char *reason = "first available port";
++    if (identity_ports && PsyzGamepadHasSerial(serial) &&
++        !strcmp(gamepad_slots[i].serial, serial)) reason = "remembered serial";
++    else if (identity_ports && i == 1 && !gamepad_slots[0].connected &&
++             family && gamepad_slots[0].family && family != gamepad_slots[0].family)
++        reason = "different physical family";
++    else if (identity_ports && i == 0 && family && family == gamepad_slots[0].family)
++        reason = "original physical family";
++    else if (identity_ports && i == 1 && !gamepad_slots[0].connected)
++        reason = "different serial";
++    PsyzGamepadRememberSlot(&gamepad_slots[i], serial, family);
+     gamepads[i].id = id;
+     gamepads[i].dev = dev;
+     gamepads[i].name = SDL_GetGamepadName(dev);
+-    INFOF("connected %s", gamepads[i].name);
++    INFOF("connected %s: controller port %d (%s)", gamepads[i].name,
++          Psyz_PadsHostPort(i) + 1, reason);
+     UpdatePlatformTouchControls();
+ }
+ 
+@@ -657,10 +695,19 @@
+     }
+ 
+     SDL_CloseGamepad(gamepads[i].dev);
+-    for (; i + 1 < LEN(gamepads); i++) {
+-        gamepads[i] = gamepads[i + 1];
+-    }
+-    gamepads[LEN(gamepads) - 1] = (struct Gamepad){0};
++    if (SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false)) {
++        /* During the encounter, keep the other pad on its logical port. */
++        gamepads[i] = (struct Gamepad){0};
++        gamepad_slots[i].connected = 0;
++    } else {
++        /* Preserve the ordinary host-input behavior outside port-switch scenes. */
++        for (; i + 1 < LEN(gamepads); ++i) {
++            gamepads[i] = gamepads[i + 1];
++            gamepad_slots[i] = gamepad_slots[i + 1];
++        }
++        gamepads[LEN(gamepads) - 1] = (struct Gamepad){0};
++        gamepad_slots[LEN(gamepad_slots) - 1] = (PsyzGamepadSlot){0};
++    }
+     UpdatePlatformTouchControls();
+ }
+ 
+@@ -805,7 +852,7 @@
+ #ifdef PSYZ_GODOT_REMOTE
+     if (id == 0) pressed |= MgsGodotButtons();
+ #endif
+-    return pressed | PadRead_Gamepad(&gamepads[id]);
++    return pressed | PadRead_Gamepad(&gamepads[HostGamepadSlot(id)]);
+ }
+ 
+ static unsigned char AxisToByte(short v) {
+@@ -823,7 +870,7 @@
+     if (port < 0 || port >= LEN(gamepads)) {
+         return false;
+     }
+-    if (gamepads[port].dev) {
++    if (gamepads[HostGamepadSlot(port)].dev) {
+         return true;
+     }
+     if (port == 0 && SDL_HasKeyboard()) {
+@@ -865,8 +912,9 @@
+             break;
+         }
+         unsigned char rx = 0x80, ry = 0x80, lx = 0x80, ly = 0x80;
+-        if (gamepads[port].dev) {
+-            SDL_Gamepad* d = gamepads[port].dev;
++        int slot = HostGamepadSlot(port);
++        if (gamepads[slot].dev) {
++            SDL_Gamepad* d = gamepads[slot].dev;
+             rx = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_RIGHTX));
+             ry = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_RIGHTY));
+             lx = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_LEFTX));
+@@ -978,6 +1026,21 @@
+ #endif
+ 
+ static void PollEvents(void) {
++    /* Identity belongs to this encounter only. Restore ordinary compact host
++     * slots after it, retaining a lone replacement as the primary device. */
++    if (!SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false)) {
++        int next = 0;
++        for (int i = 0; i < LEN(gamepads); ++i) {
++            if (gamepads[i].dev) {
++                gamepads[next] = gamepads[i];
++                gamepad_slots[next++] = gamepad_slots[i];
++            }
++        }
++        for (int i = next; i < LEN(gamepads); ++i) {
++            gamepads[i] = (struct Gamepad){0};
++            gamepad_slots[i] = (PsyzGamepadSlot){0};
++        }
++    }
+ #ifndef PLATFORM_IOS
+     // Opt-in candidate smoke: exercise the actual shortcut event route without
+     // sending global keyboard input or choosing a display mode.
+--- /dev/null
++++ b/psyz/src/platform/gamepad_slots.h
+@@ -0,0 +1,60 @@
++#ifndef PSYZ_GAMEPAD_SLOTS_H
++#define PSYZ_GAMEPAD_SLOTS_H
++#include <string.h>
++
++typedef struct PsyzGamepadSlot {
++    int connected;
++    char serial[128];
++    int family; /* Stable physical family, never a transport GUID or USB port. */
++} PsyzGamepadSlot;
++
++static int PsyzGamepadHasSerial(const char *serial) {
++    return serial && serial[0] && strlen(serial) < 128;
++}
++
++static int PsyzGamepadChooseSlot(const PsyzGamepadSlot *slots, int count,
++                                 const char *serial, int family, int allow_replacement_port2) {
++    int known = allow_replacement_port2 && PsyzGamepadHasSerial(serial);
++    /* Instance IDs change after reconnect; only an available device serial
++     * can restore a remembered identity. Never compare a model GUID. */
++    if (known) {
++        for (int i = 0; i < count; ++i)
++            if (slots[i].connected && !strcmp(slots[i].serial, serial))
++                return -2; /* Duplicate identity may be a virtual alias. */
++        for (int i = 0; i < count; ++i)
++            if (!slots[i].connected && slots[i].serial[0] &&
++                !strcmp(slots[i].serial, serial)) return i;
++        /* A verified replacement for the original controller occupies port 2.
++         * Missing serials remain conservative and use the first free slot. */
++        if (allow_replacement_port2 && count >= 2 && !slots[0].connected && !slots[1].connected &&
++            slots[0].serial[0] && strcmp(slots[0].serial, serial)) return 1;
++    }
++    /* Missing serials are common with XInput. A different known physical
++     * family is evidence of replacement; a same-family reconnect is not.
++     * Only restore model identity when no serial can contradict it. */
++    if (allow_replacement_port2 && family && count >= 2 &&
++        !slots[0].connected && !slots[1].connected && slots[0].family) {
++        if (family == slots[0].family) return 0;
++        return 1;
++    }
++    for (int i = 0; i < count; ++i)
++        if (!slots[i].connected) return i;
++    return -1;
++}
++
++/* Outside the second-controller scene, keep a lone replacement usable.
++ * This maps gamepad devices only; keyboard remains on logical host zero. */
++static int PsyzGamepadHostSlot(const PsyzGamepadSlot *slots, int count,
++                               int port, int identity_ports) {
++    if (port >= 0 && port < 2 && count >= 2 && !identity_ports &&
++        !slots[0].connected && slots[1].connected) return port ^ 1;
++    return port;
++}
++
++static void PsyzGamepadRememberSlot(PsyzGamepadSlot *slot, const char *serial, int family) {
++    slot->connected = 1;
++    slot->family = family;
++    slot->serial[0] = 0;
++    if (PsyzGamepadHasSerial(serial)) memcpy(slot->serial, serial, strlen(serial) + 1);
++}
++#endif
