@@ -23,7 +23,7 @@ Generic Castlevania / Other Life names are heuristic aliases for those lines.
 ## Download
 
 [Experimental Windows x86 prerelease](https://github.com/ImperishableNEET/mgs1-reintegrated/releases/tag/v0.2.0-reintegrated.3)
-— download windows-x86.zip, extract the folder, and open MGS-Reintegrated.exe.
+Download windows-x86.zip, extract the folder, and open MGS-Reintegrated.exe.
 Supply your own Integral CUE/BIN discs. This is a 32-bit Windows build; review
 the release notes for verification limits.
 
@@ -31,7 +31,7 @@ the release notes for verification limits.
 
 ![Reintegrated widescreen title screen](assets/screenshots/title-screen-widescreen.png)
 
-2560 � 1440 widescreen title-screen capture from the Windows candidate.
+2560 × 1440 widescreen title-screen capture from the Windows candidate.
 
 Use PowerShell 7, Python 3.11+, Git, and Visual Studio C++/Clang x86 tools plus a
 Windows SDK. See [upstream setup details](docs/UPSTREAM_README.md#build).
