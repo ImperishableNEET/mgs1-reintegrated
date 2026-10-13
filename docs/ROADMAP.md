@@ -2,13 +2,16 @@
 
 ## Reintegrated next-release priorities
 
-- Fix the reported Psycho Mantis intro crash from a captured first fault, then
-  confirm the encounter reaches playable combat. Preserve matching executable
-  and symbol evidence with the active script command and actor constructor.
+- Mantis constructor crash corrected from matching executable/symbol evidence;
+  the player cleared the encounter and confirmed physical controller hot swapping.
 - Preserve Mantis's original statue fallback and Codec hints. Keep controller
   slots stable: a verified different controller can use port 2; same or uncertain
   reconnects retain original behavior. F2/L3+R3 remains an explicit full port-switch
   fallback. Preserve boss phases and the original port-1 damage rules.
+- Overnight candidate: accept same-controller USB socket changes only with a
+  matching serial and verified Windows physical USB topology. Same-socket
+  reconnect and ambiguous/Bluetooth/XInput evidence retain existing fallbacks.
+  Physical socket-movement validation is pending; do not infer it from policy tests.
 - After the Mantis crash is fixed, add an optional Installed games memory mode
   enabled by default for new launcher profiles, with an opt-out. Preserve saved
   explicit choices. Scan only file/folder names with bounded depth and work limits,
@@ -17,9 +20,13 @@
   trigger, not a separate fifth game. Discover configured Steam library paths
   from their configuration without reading game, manifest or save contents.
   Cover the requested standard Windows/Linux roots and accessible WSL mounts.
+  Implemented; reserve fair shares of the bounded scan budget for every root
+  and nested names. Player launch confirmed Suikoden/Castlevania profile bits.
 - Track remaining intermittent floor/lighting texture flicker as longer-term
   renderer work. The player has confirmed the specific Otacon desk-floor fix;
   identify additional affected draws before extending ordering exceptions.
+  Code audit confirms primitive shadows already retain original ordering;
+  further exceptions require a specific affected mesh/effect identity.
 - Finish accepting and consolidating the display, Codec, HUD and mission-log
   candidate fixes while preserving the published package as rollback.
 - Pilot optional faithful high-resolution fonts and inventory icons: compare
@@ -92,3 +99,5 @@ binary plugin API or a completed modern mesh/material pipeline.
 
 Track defects and proposed improvements in the
 [issue tracker](https://github.com/Drommedhar/mgs-reintegral/issues).
+
+- Next release: investigate remaining camera-item behavior (user reports it is wonky/broken despite corrected widescreen surround).

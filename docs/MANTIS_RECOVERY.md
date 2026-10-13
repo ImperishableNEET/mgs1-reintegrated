@@ -1,5 +1,24 @@
 # Mantis encounter recovery
 
+## HIDEO presentation audit (13 October)
+
+The recovered Integral blackout remains on overlay channel 1: white flash at
+frame 0 and the last frame (255 on first use, 127 on repeats), black backdrop
+with the input label between them, and a smaller label beginning at frame 64.
+Configuration bit 0x100 selects the Japanese big/small textures; the other
+configuration uses the English HIDEO texture and changes its geometry.
+Modern full-width band handling already widens the black/white backdrop.
+
+The lettering still used its native fixed x coordinates after widescreen HUD
+placement was added elsewhere. The new actor patch adds only the current
+half-width excess to the label x coordinates, preserving its original right
+inset and letter proportions. Coordinates rebuild from native values each
+frame rather than accumulating offsets. Original 4:3 coordinates, language
+selection, ordering-table sequence, sound, duration, input and combat states
+remain unchanged. CPU packet tests cover both languages, both banks, every
+first/repeat effect frame, and 4:3, 16:9 and ultrawide layouts. No GPU or live
+gameplay checks were run for this audit after the reported whole-PC restart.
+
 `s07b` and `s07br` now compile and run native encounter code. All 157 assembly placeholders in the Meryl and Psycho Mantis actor files have been replaced with C. This is recovered-source and automated-runtime evidence; a complete boss fight and human playability remain unverified.
 
 The two original 143,856-byte overlays were extracted from the user's Integral Disc 1. All 13,193 instruction words in those 157 upstream assembly blocks match both original overlays. The overlay hashes, extents, block addresses, and 57 constructor bindings are recorded in [the recovery ledger](data/s07b_recovery.json). The repeat stage uses the same source group as the original upstream linker configuration.

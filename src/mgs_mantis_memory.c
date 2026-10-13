@@ -17,7 +17,9 @@
 
 #define MANTIS_MAX_PATH 1024
 #define MANTIS_MAX_ROOTS 64
+#ifndef MANTIS_MAX_ENTRIES
 #define MANTIS_MAX_ENTRIES 8192
+#endif
 #define MANTIS_MAX_DEPTH 2
 #define MANTIS_MAX_VDF 65536
 
@@ -103,6 +105,7 @@ typedef struct ScanState {
     unsigned int entries;
     unsigned int depth;
     unsigned int depth_limit;
+    unsigned int entry_limit;
 } ScanState;
 
 static void scan_directory(const char *path, ScanState *state);
@@ -114,7 +117,8 @@ static SDL_EnumerationResult SDLCALL scan_entry(void *userdata,
     ScanState *state = (ScanState *)userdata;
     char child[MANTIS_MAX_PATH];
     unsigned int depth;
-    if (++state->entries > MANTIS_MAX_ENTRIES) return SDL_ENUM_SUCCESS;
+    if (state->entries >= state->entry_limit) return SDL_ENUM_SUCCESS;
+    ++state->entries;
     state->mask |= MgsMantisMemoryIdentifyName(fname);
     if (state->mask == MGS_MANTIS_INSTALLED_MASK) return SDL_ENUM_SUCCESS;
     if (state->depth >= state->depth_limit || !join_path(child, sizeof(child), dirname, fname) ||
@@ -128,31 +132,48 @@ static SDL_EnumerationResult SDLCALL scan_entry(void *userdata,
 
 static void scan_directory(const char *path, ScanState *state)
 {
-    if (state->entries < MANTIS_MAX_ENTRIES &&
+    if (state->entries < state->entry_limit &&
         state->mask != MGS_MANTIS_INSTALLED_MASK && real_directory(path))
         SDL_EnumerateDirectory(path, scan_entry, state);
 }
 
 unsigned int MgsMantisMemoryScanRoots(const char *const *roots, size_t count)
 {
-    ScanState state = { 0, 0, 0, 0 };
-    size_t i;
+    ScanState state = { 0, 0, 0, 0, 0 };
+    const char *unique[MANTIS_MAX_ROOTS];
+    size_t i, j, unique_count = 0;
+    unsigned int phase_limit = MANTIS_MAX_ENTRIES / 2;
     if (!roots) return 0;
-    /* Check immediate names in every root before descending. A large Steam
-     * installation must not consume the budget before Program Files is seen. */
-    for (i = 0; i < count && state.entries < MANTIS_MAX_ENTRIES; ++i)
-    {
-        if (roots[i] && roots[i][0])
-        {
-            state.mask |= MgsMantisMemoryIdentifyName(roots[i]);
-            state.depth = 0;
-            scan_directory(roots[i], &state);
+    /* Public callers can supply repeated or empty roots. Dedupe before
+     * splitting the finite budget, with an explicit bound on input work. */
+    if (count > MANTIS_MAX_ROOTS * 4) count = MANTIS_MAX_ROOTS * 4;
+    for (i = 0; i < count && unique_count < MANTIS_MAX_ROOTS; ++i) {
+        if (!roots[i] || !roots[i][0]) continue;
+        for (j = 0; j < unique_count; ++j) {
+#ifdef _WIN32
+            if (!_stricmp(roots[i], unique[j])) break;
+#else
+            if (!strcmp(roots[i], unique[j])) break;
+#endif
         }
+        if (j == unique_count) unique[unique_count++] = roots[i];
+    }
+    /* Give every root a bounded share of each pass. Reserve the second half
+     * for nested names so a large first library cannot starve later roots. */
+    for (i = 0; i < unique_count && state.entries < phase_limit; ++i)
+    {
+        unsigned int share = (phase_limit - state.entries) / (unsigned int)(unique_count - i);
+        state.entry_limit = state.entries + (share ? share : 1);
+        state.mask |= MgsMantisMemoryIdentifyName(unique[i]);
+        state.depth = 0;
+        scan_directory(unique[i], &state);
     }
     state.depth_limit = MANTIS_MAX_DEPTH;
-    for (i = 0; i < count && state.entries < MANTIS_MAX_ENTRIES; ++i) {
+    for (i = 0; i < unique_count && state.entries < MANTIS_MAX_ENTRIES; ++i) {
+        unsigned int share = (MANTIS_MAX_ENTRIES - state.entries) / (unsigned int)(unique_count - i);
+        state.entry_limit = state.entries + (share ? share : 1);
         state.depth = 0;
-        if (roots[i] && roots[i][0]) scan_directory(roots[i], &state);
+        scan_directory(unique[i], &state);
     }
     return state.mask;
 }

@@ -74,17 +74,72 @@ int main(void)
         MgsHiResFontRegisterSpriteRegion(&contact_packets[i], &kcb,
                                          64 + i, 133, 96, 12, 96, 12);
     MgsHiResFontSetSpriteForeColor(&contact_packets[0], 0, 0x3a4b);
+    /* Replacing an existing packet while full must not consume another slot. */
+    MgsHiResFontRegisterSpriteRegion(&contact_packets[0], &kcb,
+                                     500, 133, 96, 12, 96, 12);
     MgsHiResFontRegisterSpriteRegion(&contact_packets[64], &kcb,
                                      64, 133, 96, 12, 96, 12);
     assert(!MgsHiResFontTakeSprite(&contact_packets[64]));
+    assert(!MgsHiResFontTakeSprite(NULL));
     for (int i = 0; i < 64; ++i) {
         const MgsHiResFontSnapshot *contact =
             MgsHiResFontTakeSprite(&contact_packets[i]);
-        assert(contact && contact->x == 64 + i && contact->source_x == 96 &&
+        assert(contact && contact->x == (i == 0 ? 500 : 64 + i) && contact->source_x == 96 &&
                contact->source_y == 12 && contact->glyphs[0].code == 'A');
-        assert(contact->palette[3] == (i == 0 ? 0x3a4b : first_palette[3]));
+        assert(contact->palette[3] == first_palette[3]);
     }
+    MgsHiResFontRegisterSpriteRegion(&contact_packets[64], &kcb,
+                                     700, 133, 96, 12, 96, 12);
+    const MgsHiResFontSnapshot *reused = MgsHiResFontTakeSprite(&contact_packets[64]);
+    assert(reused && reused->x == 700 && reused->glyphs[0].code == 'A');
+    assert(!MgsHiResFontTakeSprite(&contact_packets[64]));
     MgsHiResFontDetach(&kcb);
     MgsHiResFontDetach(&subtitle_kcb);
+#ifdef _WIN32
+    assert(_putenv_s("REI_INTERFACE_FONT_ATLAS", "fixture") == 0);
+#else
+    assert(setenv("REI_INTERFACE_FONT_ATLAS", "fixture", 1) == 0);
+#endif
+    unsigned short interface_palette[16] = {0, 0xc210};
+    MgsHiResFontSetInterfacePalette(interface_palette);
+    int interface_packets[1025];
+    for (int i = 0; i < 1024; ++i)
+        MgsHiResFontRegisterInterfaceGlyph(&interface_packets[i], 'A', 0x1234);
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[1024], 'B', 0x1234);
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[1024], NULL, NULL));
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[500], 'C', 0x1234);
+    for (int i = 0; i < 1024; ++i)
+        assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[i], NULL, NULL) == (i == 500 ? 'C' : 'A'));
+    assert(!MgsHiResFontTakeInterfaceGlyph(NULL, NULL, NULL));
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 128, 0x1234);
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL));
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'D', 0x1234);
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL) == 'D');
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL));
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'A', 0x1234);
+    interface_palette[1] = 0x001f;
+    MgsHiResFontSetInterfacePalette(interface_palette);
+    unsigned short captured_fore = 0;
+    unsigned captured_uv_clut = 0;
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], &captured_fore, &captured_uv_clut) == 'A');
+    assert(captured_uv_clut == 0x1234);
+    assert(captured_fore == 0xc210); /* queued palette is immutable */
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'A', 0x1234);
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], '*', 0x1234);
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL));
+    interface_palette[2] = 0x03e0; /* multiple nonblack indices unsupported */
+    MgsHiResFontSetInterfacePalette(interface_palette);
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'A', 0x1234);
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL));
+    interface_palette[2] = 0x8000;
+    MgsHiResFontSetInterfacePalette(interface_palette);
+    unsigned char panel[216 * 12 / 2] = {0};
+    MgsHiResFontValidateInterfacePixels(panel, 216, 12);
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'A', 0x1234);
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL) == 'A');
+    panel[1200] = 0x20;
+    MgsHiResFontValidateInterfacePixels(panel, 216, 12);
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'A', 0x1234);
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL));
     return 0;
 }

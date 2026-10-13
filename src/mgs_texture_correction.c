@@ -136,7 +136,13 @@ int MgsTextureCorrectionArea(const void *const xy[4], int original)
     return area > 0 ? (int)ceilf(area) : (int)floorf(area);
 }
 
-static PsyzProjectedVertex Project(const MATRIX *matrix, const SVECTOR *vertex)
+typedef struct {
+    float screen;
+    int32_t offset_x, offset_y;
+} ProjectionControls;
+
+static PsyzProjectedVertex Project(const MATRIX *matrix, const SVECTOR *vertex,
+                                   const ProjectionControls *controls)
 {
     float camera[3];
     for (int row = 0; row < 3; ++row)
@@ -144,12 +150,14 @@ static PsyzProjectedVertex Project(const MATRIX *matrix, const SVECTOR *vertex)
             (matrix->m[row][0] * (float)vertex->vx +
              matrix->m[row][1] * (float)vertex->vy +
              matrix->m[row][2] * (float)vertex->vz) / 4096.0f;
-    float screen = (float)(Psyz_GteCtrlRead(26) & 0xffff);
+    float screen = controls ? controls->screen : (float)(Psyz_GteCtrlRead(26) & 0xffff);
     if (camera[2] <= screen / 2 || camera[2] > 65535)
         return (PsyzProjectedVertex){0};
     float scale = screen / camera[2];
-    float x = camera[0] * scale + (int32_t)Psyz_GteCtrlRead(24) / 65536.0f;
-    float y = camera[1] * scale + (int32_t)Psyz_GteCtrlRead(25) / 65536.0f;
+    float x = camera[0] * scale +
+        (controls ? controls->offset_x : (int32_t)Psyz_GteCtrlRead(24)) / 65536.0f;
+    float y = camera[1] * scale +
+        (controls ? controls->offset_y : (int32_t)Psyz_GteCtrlRead(25)) / 65536.0f;
     if (x < -1024 || x > 1023 || y < -1024 || y > 1023)
         return (PsyzProjectedVertex){0};
     return (PsyzProjectedVertex){x, y, camera[2]};
@@ -160,8 +168,17 @@ void MgsTextureCorrectionCapture(const SVECTOR *vertices, int count, const DVECT
     if (!correction_enabled) return;
     MATRIX matrix;
     ReadRotMatrix(&matrix);
+    if (count <= 0) return;
+    if (count == 1) {
+        SetVertex(xy, Project(&matrix, vertices, NULL), PSYZ_GEOMETRY_VALID);
+        return;
+    }
+    /* These pure GTE controls cannot change inside this non-yielding capture.
+     * Snapshot per call, retaining the original float operation order. */
+    ProjectionControls controls = {(float)(Psyz_GteCtrlRead(26) & 0xffff),
+        (int32_t)Psyz_GteCtrlRead(24), (int32_t)Psyz_GteCtrlRead(25)};
     for (int i = 0; i < count; ++i)
-        SetVertex(xy + i, Project(&matrix, vertices + i), PSYZ_GEOMETRY_VALID);
+        SetVertex(xy + i, Project(&matrix, vertices + i, &controls), PSYZ_GEOMETRY_VALID);
 }
 
 void MgsTextureCorrectionProject(const void *xy, const SVECTOR *vertex)
@@ -169,7 +186,7 @@ void MgsTextureCorrectionProject(const void *xy, const SVECTOR *vertex)
     if (!correction_enabled) return;
     MATRIX matrix;
     ReadRotMatrix(&matrix);
-    SetVertex(xy, Project(&matrix, vertex), PSYZ_GEOMETRY_VALID);
+    SetVertex(xy, Project(&matrix, vertex, NULL), PSYZ_GEOMETRY_VALID);
 }
 
 void MgsTextureCorrectionCopy(const void *destination, const void *source)

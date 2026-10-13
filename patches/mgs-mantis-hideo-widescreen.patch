@@ -1,0 +1,44 @@
+diff --git a/source/overlays/s07b/chara/psyco/psyco.c b/source/overlays/s07b/chara/psyco/psyco.c
+--- a/source/overlays/s07b/chara/psyco/psyco.c
++++ b/source/overlays/s07b/chara/psyco/psyco.c
+@@ -11,6 +11,7 @@
+ #include "takabe/cineutil.h"
+ #include "takabe/sepia.h"
+ #include "takabe/fadeio.h"
++#include "mgs_video.h"
+ 
+ #define BODY_DATA GV_StrCode("psycho")
+ #define MOTION_DATA GV_StrCode("psycho")
+@@ -869,15 +870,23 @@
+     int last = work->field_a58 ? 127 : 255;
+     OT_TYPE *ot = DG_Chanl(1)->ot[bank];
+ 
+-    if (!japanese && (time == 0 || time == 64))
+-    {
+-        for (i = 0; i < 2; ++i)
+-        {
+-            POLY_FT4 *p = &work->hideo[i];
+-            setXY4(p, time == 0 ? 224 : 260, 8, 296, 8,
+-                   time == 0 ? 224 : 260, time == 0 ? 40 : 24,
+-                   296, time == 0 ? 40 : 24);
+-        }
++    /* Keep the simulated TV input label at its original right inset, just as
++     * the widescreen radar does. Full-width black/white packets are widened by
++     * the renderer; only the label needs an explicit corner offset. Rebuild
++     * coordinates from their native values so repeated calls never drift. */
++    int right_offset = MgsVideoHalfWidth() - 160;
++    for (i = 0; i < 2; ++i)
++    {
++        int x = (time < 64 ? 224 : 260) + right_offset;
++        int bottom = time < 64 ? 40 : 24;
++        setXY4(&work->hideo[i], x, 8, 296 + right_offset, 8,
++               x, bottom, 296 + right_offset, bottom);
++        setXY4(&work->hideo_big[i], 192 + right_offset, 8,
++               312 + right_offset, 8, 192 + right_offset, 36,
++               312 + right_offset, 36);
++        setXY4(&work->hideo_small[i], 252 + right_offset, 8,
++               312 + right_offset, 8, 252 + right_offset, 22,
++               312 + right_offset, 22);
+     }
+     if (time == 0 || time == last)
+     {

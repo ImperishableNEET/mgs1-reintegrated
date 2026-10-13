@@ -23,5 +23,7 @@ void MgsVideoMovie(int active);
 void MgsVideoCodec(int active);
 void MgsVideoText(int active);
 void MgsVideoStage(const char *name);
+void MgsVideoMainMenu(int active);
+int MgsVideoTitleBackgroundX(int x);
 
 #endif

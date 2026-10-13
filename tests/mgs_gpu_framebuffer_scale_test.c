@@ -6,6 +6,7 @@
 #include <libgpu.h>
 #include <psyz.h>
 
+int ReiReintegratedTitleVisible;
 static int scale;
 static unsigned comparisons;
 static unsigned char presented_color[32];
@@ -120,7 +121,16 @@ static void check_scaled_feedback(void)
     ClearImage(&destination, 64, 0, 0);
     copy(0, 0, 320, 0);
     unsigned char *native_copy = capture(0);
-    unsigned lost_detail = compare(native_copy, source, 0, 0);
+    /* A 16-bit polygon on the verified front-buffer page now selects scaled
+     * feedback itself, including ordinary 2D framebuffer-copy polygons. The
+     * complete copied region must equal the original high-resolution image. */
+    assert(compare(native_copy, source, 0, 0) == 0);
+    free(native_copy);
+    /* Sprites remain explicitly scoped: an unscoped native sprite is not a
+     * model/framebuffer polygon and must retain its original native lookup. */
+    copy(1, 64, 320, 0);
+    native_copy = capture(0);
+    unsigned lost_detail = compare(native_copy, source, 64, 0);
     assert(scale == 1 ? lost_detail == 0 : lost_detail > 0);
     free(native_copy);
     ClearImage(&destination, 64, 0, 0);
@@ -149,10 +159,10 @@ static void check_scaled_feedback(void)
     assert(Psyz_GpuSetFramebufferSampling(0) == 0);
     copy(0, 256, 320, 0);
     native_copy = capture(0);
-    assert(compare(native_copy, source, 256, 0) == lost_detail);
+    assert(compare(native_copy, source, 256, 0) == 0);
     free(native_copy);
     free(source);
-    printf("Framebuffer %dx: %u channel comparisons; unscoped copy loses %u samples\n",
+    printf("Framebuffer %dx: %u channel comparisons; verified polygons retain detail, unscoped sprite loses %u samples\n",
            scale, comparisons, lost_detail);
 }
 
@@ -286,12 +296,64 @@ static void check_world_destination(void)
     printf("Framebuffer/world %dx: %u total channel comparisons\n", scale, comparisons);
 }
 
+static void check_resolution_transition(void)
+{
+    /* A held front buffer and the other half both contain a 2x diagonal.
+     * Rebuilding through native VRAM destroys its intermediate edge samples. */
+    seed_source();
+    assert(Psyz_GpuSetFramebufferSampling(1) == 0);
+    environment(0);
+    copy(0, 0, 320, 0);
+    unsigned char *before[2] = {capture(0), capture(320)};
+    unsigned short native_before[2][32 * 32];
+    for (int half = 0; half < 2; ++half) {
+        RECT region = {half * 320, 0, 32, 32};
+        StoreImage(&region, (u_long *)native_before[half]);
+    }
+    assert(Psyz_VideoSetInternalResolution(4) == 0);
+    /* Keep the same output size: only internal text resolution changes. */
+    unsigned differences = 0;
+    for (int half = 0; half < 2; ++half) {
+        unsigned char *after = capture(half * 320);
+        for (int y = 0; y < 32 * scale; ++y)
+            for (int x = 0; x < 32 * scale; ++x)
+                for (int channel = 0; channel < 3; ++channel) {
+                    size_t offset = ((size_t)y * 320 * scale + x) * 3 + channel;
+                    differences += after[offset] != before[half][offset];
+                }
+        free(after);
+        free(before[half]);
+    }
+    fprintf(stderr, "Held framebuffer 2x->4x: %u mismatched channels\n", differences);
+    assert(differences == 0);
+    for (int half = 0; half < 2; ++half) {
+        unsigned short native_after[32 * 32];
+        RECT region = {half * 320, 0, 32, 32};
+        StoreImage(&region, (u_long *)native_after);
+        assert(memcmp(native_before[half], native_after, sizeof(native_after)) == 0);
+    }
+    /* The replacement's lazy snapshot must read its preserved fine detail. */
+    unsigned char *source = capture(320);
+    environment(0);
+    copy(0, 64, 320, 0);
+    unsigned char *after = capture(0);
+    assert(compare(after, source, 64, 0) == 0);
+    free(after);
+    /* Reducing back to the original scale must preserve this 2x image too. */
+    assert(Psyz_VideoSetInternalResolution(2) == 0);
+    after = capture(320);
+    assert(memcmp(after, source, (size_t)320 * scale * 224 * scale * 3) == 0);
+    free(after);
+    free(source);
+    assert(Psyz_GpuSetFramebufferSampling(0) == 0);
+}
+
 int main(int argc, char **argv)
 {
     _set_error_mode(_OUT_TO_STDERR);
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     scale = argc == 2 ? atoi(argv[1]) : 1;
-    assert(argc <= 2 && (scale == 1 || scale == 2 || scale == 8));
+    assert(argc <= 2 && (scale == 1 || scale == 2 || scale == 4 || scale == 8));
     assert(Psyz_VideoConfigureWindow(320 * scale, 224 * scale, 0) == 0);
     assert(Psyz_VideoSetPresentation(320, 224, 224) == 0);
     assert(Psyz_VideoSetInternalResolution((unsigned)scale) == 0);
@@ -305,5 +367,6 @@ int main(int argc, char **argv)
     DrawSync(0);
     check_scaled_feedback();
     check_world_destination();
+    if (scale == 2) check_resolution_transition();
     return 0;
 }

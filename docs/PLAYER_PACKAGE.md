@@ -18,6 +18,11 @@ for Codec dialogue turbo (default on); disable it in Gameplay or launch Play.ps1
 with -CodecTurbo:$false. Cutscene behavior is unchanged. Loading an
 older save can restore the save's language/caption options.
 
+Modern rendering matches the selected display resolution during gameplay and
+text. Graphics > Original-resolution gameplay is an optional lower-GPU mode;
+leave it unchecked for consistent detail across pause and cutscene captions.
+The equivalent PowerShell opt-out is `Play.ps1 -OriginalResolution`.
+
 Settings and saves use %LOCALAPPDATA%/MGS-Reintegrated. Existing upstream
 RE-INTEGRAL profiles are left untouched. Back up saves before testing candidates.
 Alt+Enter toggles borderless windowed fullscreen. Exclusive fullscreen is not
@@ -36,6 +41,11 @@ Installed-game Mantis memory reading defaults on for new launcher profiles;
 select Off to opt out. Saved explicit choices persist. Scanning reads bounded
 local file/folder names, plus Steam library configuration for paths only.
 Optional Sharp English text uses the bundled Heros atlas and adjacent notices.
+The unpublished font candidate also includes interface-font.bmp for block menu
+lettering, derived from Andrew Gleeson's CC BY-SA 4.0 font recreation. Its
+attribution and license are in the fonts folder. The original bitmap renderer
+remains the fallback. An unsmoothed interface-font-original.bmp is also supplied;
+copy it over interface-font.bmp to retain the recreation's stepped diagonals.
 
 See THIRD_PARTY.md, LICENSE, SOURCE-AND-NOTICES.txt and the accompanying source
 archive for provenance and license scopes. Packaging is not a blanket license

@@ -121,6 +121,13 @@ clearance for public distribution.
 
 ## Tooling and local content
 
+The optional interface font is Andrew Gleeson's MGS1 font recreation, licensed
+under CC BY-SA 4.0. Its supplied TTF and derived coverage atlases retain that
+license; attribution and changes are documented in `licenses/Gleeson-atlas-notice.txt`
+and the atlas manifest. This font license does not replace the engine's existing
+license scopes. The recreation is not an original Konami source font.
+Source: https://gleeson.itch.io/mgs1-fonts
+
 `tools/toolchain.ps1` downloads the official Windows CMake 3.31.8 and Ninja 1.13.1 archives into `.tools` and verifies pinned SHA-256 values. Visual Studio/LLVM and the Windows SDK are discovered from an existing installation. Python dependencies are installed into `.venv` from `requirements.txt`; Jinja2 is pinned to 3.1.6 and MarkupSafe to 3.0.4. This is a source-version lock, not a complete byte-reproducible toolchain. The launcher uses Windows' .NET Framework and its C# compiler; no .NET installer is bundled.
 
 `tools/package.ps1` includes applicable notices and a separate archive of the

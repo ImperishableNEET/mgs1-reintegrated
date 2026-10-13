@@ -16,6 +16,12 @@ typedef struct MgsHiResFontSnapshot {
     MgsHiResGlyph glyphs[MGS_HIRES_FONT_MAX_GLYPHS];
 } MgsHiResFontSnapshot;
 
+/* Custom interface sprites retain their original packet coordinates/spacing. */
+void MgsHiResFontSetInterfacePalette(const unsigned short *palette);
+void MgsHiResFontValidateInterfacePixels(const void *pixels, int width, int height);
+void MgsHiResFontRegisterInterfaceGlyph(const void *packet, unsigned code, unsigned uv_clut);
+unsigned MgsHiResFontTakeInterfaceGlyph(const void *packet, unsigned short *fore, unsigned *uv_clut);
+
 /* The renderer consumes snapshots by packet identity at Draw_PushPrim time. */
 void MgsHiResFontAttach(const void *kcb);
 void MgsHiResFontDetach(const void *kcb);

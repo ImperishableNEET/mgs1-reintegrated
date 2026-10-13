@@ -1,0 +1,48 @@
+--- a/source/onoda/open/open.c
++++ b/source/onoda/open/open.c
+@@ -21,6 +21,7 @@
+ #include "menu/menuman.h"
+ #ifdef MGS_NATIVE
+ #include "mgs_cadence.h"
++#include "mgs_video.h"
+ #endif
+ 
+ typedef struct _Unknown
+@@ -555,6 +556,16 @@
+     for (i = 0; i < 22; i++)
+     {
+         *dst_ft4 = *src_ft4;
++#ifdef MGS_NATIVE
++        /* Only op_back_l/r layers expand. Never modify animated source state
++         * or stretch the logo, Snake portrait, copyright or menu letterforms. */
++        if (i < 7 && (work->fA74 == 6 || work->fA74 == 7)) {
++            dst_ft4->x0 = MgsVideoTitleBackgroundX(dst_ft4->x0);
++            dst_ft4->x1 = MgsVideoTitleBackgroundX(dst_ft4->x1);
++            dst_ft4->x2 = MgsVideoTitleBackgroundX(dst_ft4->x2);
++            dst_ft4->x3 = MgsVideoTitleBackgroundX(dst_ft4->x3);
++        }
++#endif
+         SSTOREL(work->f30[i], &dst_ft4->tag);
+         dst_ft4++;
+         src_ft4++;
+@@ -8459,6 +8470,12 @@
+     packs = work->f18C_polys;
+ 
+     title_open_800C628C(work);
++#ifdef MGS_NATIVE
++    /* Input may select a submenu in this update. Choose the aspect from the
++     * state that actually contributes this frame's draw packets. */
++    ReiReintegratedTitleVisible = work->fA74 == 6 || work->fA74 == 7;
++    MgsVideoMainMenu(ReiReintegratedTitleVisible);
++#endif
+ 
+     if (work->f24D4 == 0)
+     {
+@@ -8846,6 +8863,7 @@
+ #ifdef MGS_NATIVE
+     extern int ReiReintegratedTitleVisible;
+     ReiReintegratedTitleVisible = 0;
++    MgsVideoMainMenu(0);
+ #endif
+     int      i;
+     void    *buf;

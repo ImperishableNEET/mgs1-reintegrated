@@ -1,0 +1,27 @@
+--- a/source/menu/radio.c
++++ b/source/menu/radio.c
+@@ -2190,6 +2190,11 @@
+     rect.h = 1;
+ 
+     LoadImage(&rect, pPanelTex.field_4_word_ptr_pixels);
++#ifdef MGS_NATIVE
++    MgsHiResFontSetInterfacePalette(pPanelTex.field_4_word_ptr_pixels);
++    MgsHiResFontValidateInterfacePixels(pPanelTex.field_0_pixels,
++                                      pPanelTex.field_10_w, pPanelTex.field_12_h);
++#endif
+ 
+     gRadioStringSprt_800BD9F0.u0 = 0;
+     LSTORE(0x80808080, &gRadioStringSprt_800BD9F0.r0);
+@@ -2329,6 +2334,12 @@
+         setXY0(pSprt2, width, pTextConfig->ypos);
+         setUV0(pSprt2, tpx, tpy);
+ 
++#ifdef MGS_NATIVE
++        MgsHiResFontRegisterInterfaceGlyph(&pSprt2->r0,
++            (lc >= 'a' && lc <= 'z') ? lc - 32 : c,
++            (unsigned)pSprt2->u0 | ((unsigned)pSprt2->v0 << 8) |
++            ((unsigned)pSprt2->clut << 16));
++#endif
+         addPrim(ot, pSprt2);
+         width += skip;
+ loop:

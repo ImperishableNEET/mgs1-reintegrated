@@ -15,7 +15,7 @@ enum { VIDEO_COMMAND = 0xf3, FRAME_WIDTH = 320, FRAME_HEIGHT = 224,
 int ReiReintegratedTitleVisible;
 static unsigned view_numerator = 1, view_denominator = 1;
 static int widescreen, frame_active, frame_centre, frame_buffer, capture_output, movie_active;
-static int codec_active, menu_stage, text_active;
+static int codec_active, menu_stage, text_active, title_main_menu;
 static unsigned text_idle_frames;
 static unsigned char buffer_original[2], presented_original;
 static unsigned output_width, output_height;
@@ -75,12 +75,22 @@ static unsigned GreatestCommonDivisor(unsigned first, unsigned second)
     return first;
 }
 
+static int OriginalCanvas(void)
+{
+    return movie_active || codec_active || (menu_stage && !title_main_menu);
+}
+
 static int SetChannelTransform(int mode)
 {
     int original = movie_active || codec_active || menu_stage;
     if (Psyz_GpuSetFramebufferSampling(mode == MGS_VIDEO_CANVAS) != 0 ||
         Psyz_GpuSetTextureAlignment(mode != MGS_VIDEO_WORLD || original) != 0)
         return 0;
+    /* Main-menu foreground is centered without HUD corner anchoring. Its
+     * seven abstract background quads are widened only in copied draw packets. */
+    if (title_main_menu && widescreen && !movie_active && !codec_active)
+        return Psyz_GpuSetFrameTransform(view_numerator, view_denominator,
+                                        frame_centre, 0) == 0;
     if (mode == MGS_VIDEO_CANVAS || !widescreen || movie_active || codec_active || menu_stage)
         return Psyz_GpuSetFrameTransform(1, 1, frame_centre, 0) == 0;
     return Psyz_GpuSetFrameTransform(view_numerator, view_denominator,
@@ -146,6 +156,7 @@ int MgsVideoConfigure(const MgsVideoOptions *options)
     text_scale = font_scale;
     text_active = 0;
     text_idle_frames = 0;
+    title_main_menu = 0;
     output_width = width;
     output_height = height;
     widescreen = options->widescreen;
@@ -258,7 +269,7 @@ void MgsVideoEndFrame(void)
     if (!frame_active)
         return;
     DrawSync(0);
-    buffer_original[frame_buffer] = (unsigned char)(movie_active || codec_active || menu_stage);
+    buffer_original[frame_buffer] = (unsigned char)OriginalCanvas();
     frame_active = 0;
     if (Psyz_GpuSetFrameTransform(1, 1, 0, 0) != 0 ||
         Psyz_GpuSetFramebufferSampling(0) != 0 ||
@@ -287,10 +298,10 @@ void MgsVideoDisplayFrame(int which)
 static void SetCanvasPresentation(int defer_display)
 {
     MgsVideoEndFrame();
-    int original = movie_active || codec_active || menu_stage;
+    int original = OriginalCanvas();
     unsigned width = original ? 4 : output_width;
     unsigned height = original ? 3 : output_height;
-    if (Psyz_GpuSetTextureAlignment(original) != 0 ||
+    if (Psyz_GpuSetTextureAlignment(movie_active || codec_active || menu_stage) != 0 ||
         (widescreen && !defer_display &&
          Psyz_VideoSetPresentation(width, height, FRAME_HEIGHT) != 0)) {
         fputs("Renderer cannot change canvas presentation.\n", stderr);
@@ -337,6 +348,28 @@ void MgsVideoText(int active)
         text_idle_frames = TEXT_IDLE_FRAMES;
 }
 
+void MgsVideoMainMenu(int active)
+{
+    active = active != 0 && capture_output && widescreen && menu_stage;
+    if (title_main_menu == active) return;
+    MgsVideoEndFrame();
+    title_main_menu = active;
+    /* Keep the old framebuffer aspect until the first re-composed menu frame
+     * is actually completed, just as Codec and FMV transitions do. */
+    SetCanvasPresentation(1);
+}
+
+int MgsVideoTitleBackgroundX(int x)
+{
+    if (!title_main_menu || movie_active || codec_active) return x;
+    int64_t scaled = (int64_t)x * view_denominator;
+    int64_t divisor = view_numerator;
+    /* Round away from center so the outer quads overscan rather than leaving
+     * subpixel black slivers at either widescreen framebuffer edge. */
+    return (int)(scaled >= 0 ? (scaled + divisor - 1) / divisor
+                            : -((-scaled + divisor - 1) / divisor));
+}
+
 void MgsVideoStage(const char *name)
 {
     ReiReintegratedTitleVisible = 0;
@@ -348,6 +381,7 @@ void MgsVideoStage(const char *name)
     if (!capture_output)
         return;
     MgsVideoEndFrame();
+    title_main_menu = 0;
     text_active = 0;
     text_idle_frames = 0;
     menu_stage = 0;

@@ -18,6 +18,7 @@ typedef struct SpriteSnapshot {
 
 /* Contact names can queue eight rows plus eight selected-row glow copies. */
 static SpriteSnapshot sprites[64];
+static unsigned queued_sprites;
 
 static int Enabled(void)
 {
@@ -122,6 +123,8 @@ void MgsHiResFontRegisterSpriteRegion(const void *packet, const void *kcb,
         return;
     for (unsigned i = 0; i < sizeof(sprites) / sizeof(sprites[0]); ++i) {
         if (!sprites[i].packet || sprites[i].packet == packet) {
+            if (!sprites[i].packet)
+                ++queued_sprites;
             sprites[i].text = context->pending;
             sprites[i].text.x = (short)x;
             sprites[i].text.y = (short)y;
@@ -150,11 +153,85 @@ void MgsHiResFontSetSpriteForeColor(const void *packet, unsigned color,
 
 const MgsHiResFontSnapshot *MgsHiResFontTakeSprite(const void *packet)
 {
+    if (!packet || !queued_sprites)
+        return NULL;
     for (unsigned i = 0; i < sizeof(sprites) / sizeof(sprites[0]); ++i) {
-        if (sprites[i].packet == packet && packet) {
+        if (sprites[i].packet == packet) {
             sprites[i].packet = NULL;
+            --queued_sprites;
             return &sprites[i].text;
         }
     }
     return NULL;
+}
+
+/* A save/load screen may enqueue hundreds of individual block-font sprites.
+ * This queue stores metadata only, never game font pixels. Overflow preserves
+ * the original packet. Missing atlas leaves registration disabled. */
+typedef struct InterfaceGlyph { const void *packet; unsigned char code; unsigned short fore; unsigned uv_clut; } InterfaceGlyph;
+static InterfaceGlyph interface_glyphs[1024];
+static unsigned interface_count;
+static unsigned short interface_fore;
+static int interface_palette_valid;
+void MgsHiResFontSetInterfacePalette(const unsigned short *palette)
+{
+    interface_palette_valid = 0;
+    if (!palette || palette[0] || !(palette[1] & 0x7fff)) return;
+    for (unsigned i = 2; i < 16; ++i)
+        if (palette[i] & 0x7fff) return;
+    interface_fore = palette[1];
+    interface_palette_valid = 1;
+}
+void MgsHiResFontValidateInterfacePixels(const void *pixels, int width, int height)
+{
+    /* Source panel45 is a 216x12 4bpp binary alphabet. Unknown/modded indexed
+     * artwork using opaque-black or additional color entries keeps its bitmap. */
+    if (!pixels || width != 216 || height != 12) {
+        interface_palette_valid = 0;
+        return;
+    }
+    const unsigned char *data = pixels;
+    for (unsigned i = 0; i < 216u * 12u / 2u; ++i)
+        if ((data[i] & 15) > 1 || (data[i] >> 4) > 1) {
+            interface_palette_valid = 0;
+            return;
+        }
+}
+void MgsHiResFontRegisterInterfaceGlyph(const void *packet, unsigned code, unsigned uv_clut)
+{
+    const char *atlas = getenv("REI_INTERFACE_FONT_ATLAS");
+    if (!packet || !atlas || !*atlas || !interface_palette_valid ||
+        !((code >= 'A' && code <= 'Z') || (code >= '0' && code <= '9') ||
+          code == '.' || code == ':' || code == '!' || code == '?' || code == '+' || code == '-')) {
+        /* Reused packets must not inherit a previously queued supported glyph. */
+        MgsHiResFontTakeInterfaceGlyph(packet, NULL, NULL);
+        return;
+    }
+    unsigned empty = 1024;
+    for (unsigned i = 0; i < 1024; ++i) {
+        if (interface_glyphs[i].packet == packet) {
+            interface_glyphs[i] = (InterfaceGlyph){packet, (unsigned char)code, interface_fore, uv_clut};
+            return;
+        }
+        if (!interface_glyphs[i].packet && empty == 1024) empty = i;
+    }
+    if (empty < 1024) {
+        ++interface_count;
+        interface_glyphs[empty] = (InterfaceGlyph){packet, (unsigned char)code, interface_fore, uv_clut};
+    }
+}
+unsigned MgsHiResFontTakeInterfaceGlyph(const void *packet, unsigned short *fore, unsigned *uv_clut)
+{
+    if (!packet || !interface_count) return 0;
+    for (unsigned i = 0; i < 1024; ++i) {
+        if (interface_glyphs[i].packet == packet) {
+            unsigned code = interface_glyphs[i].code;
+            if (fore) *fore = interface_glyphs[i].fore;
+            if (uv_clut) *uv_clut = interface_glyphs[i].uv_clut;
+            interface_glyphs[i].packet = NULL;
+            --interface_count;
+            return code;
+        }
+    }
+    return 0;
 }

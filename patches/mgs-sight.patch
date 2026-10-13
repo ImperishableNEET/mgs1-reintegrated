@@ -2,11 +2,12 @@ diff --git a/source/thing/sight.c b/source/thing/sight.c
 index 503a772f2..536f2a240 100644
 --- a/source/thing/sight.c
 +++ b/source/thing/sight.c
-@@ -1,5 +1,9 @@
+@@ -1,5 +1,10 @@
  #include "sight.h"
  
 +#ifdef MGS_NATIVE
 +#include "mgs_sight.h"
++#include "mgs_video.h"
 +#endif
 +
  #include <sys/types.h>
@@ -52,7 +53,7 @@ index 503a772f2..536f2a240 100644
  
      if (work->itemId != *work->itemEquippedIndicator)
      {
-@@ -498,9 +510,23 @@ static void Act(Work *work)
+@@ -498,9 +511,24 @@ static void Act(Work *work)
          {
              if (!(dword_8009F608 & 1) && !(GM_PlayerStatus & PLAYER_NOT_SIGHT))
              {
@@ -65,6 +66,7 @@ index 503a772f2..536f2a240 100644
 +                    GV_DestroyActor(&work->actor);
 +                    return;
 +                }
++                MgsSightExpandEdgeMask(nativePacket, size, MgsVideoHalfWidth(), ancField1Shifted);
 +                addPrim(ot, nativePacket);
 +                nativePacket += size;
 +                nativeAvailable -= size;

@@ -42,7 +42,9 @@ void MgsControllerPortsUpdate(void)
 {
     const char *area = GM_GetArea(0);
     int mantis = area && !strcmp(area, "s07b");
-    int dying = mantis && GM_GameOverTimer != 0;
+    /* Negative timer states also occur during Meryl's nonfatal scene. Count
+     * only an actual Game Over countdown toward the delayed port hint. */
+    int dying = mantis && GM_GameOverTimer > 0;
     if (!mantis) {
         mantis_deaths = 0;
         death_active = 0;
@@ -85,8 +87,13 @@ void MgsControllerPortsInit(void)
 
 const char *MgsControllerPortsHint(void)
 {
-    int available = (GM_PlayerStatus & PLAYER_SECOND_AVAILABLE) != 0;
-    if (!shortcut_used && mantis_deaths < 2)
+    const char *area = GM_GetArea(0);
+    int mantis = area && !strcmp(area, "s07b");
+    int available = mantis && (GM_PlayerStatus & PLAYER_SECOND_AVAILABLE) != 0;
+    int swapped = Psyz_PadsHostPort(0) != 0;
+    /* A manual swap persists until the player reverses it. Keep the return
+     * prompt after Mantis, even when the encounter's hint is otherwise hidden. */
+    if (!swapped && (!available || (!shortcut_used && mantis_deaths < 2)))
         return "";
     if (MgsInputMovieReplaying()) {
         if (!available)
@@ -94,7 +101,7 @@ const char *MgsControllerPortsHint(void)
         return (GM_PlayerStatus & PLAYER_SECOND_CONTROLLER) ?
             "REPLAY - CONTROLLER PORT 2" : "REPLAY - CONTROLLER PORT 1";
     }
-    if (Psyz_PadsHostPort(0) ||
+    if (swapped ||
         (available && (GM_PlayerStatus & PLAYER_SECOND_CONTROLLER)))
         return "CONTROLLER PORT 2\nF2/L3+R3: RETURN TO PORT 1";
     return available ? "CONTROLLER PORT 1\nF2/L3+R3: SWITCH TO PORT 2" : "";

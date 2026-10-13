@@ -19,6 +19,7 @@ namespace ReIntegral
         public bool Scanlines;
         public bool CodecTurbo = true;
         public bool SharpCodecFont;
+        public bool OriginalResolution;
         public bool MissionLogFast = true;
         public bool FirstPersonMoveShoot;
         public bool TextureCorrection;

@@ -8,10 +8,13 @@ typedef unsigned int u_int;
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 static MATRIX transform = {{{4096, 0, 0}, {0, 4096, 0}, {0, 0, 4096}}, {0, 0, 0}};
 static PsyzGeometryCallback callback;
 static int resets;
+static unsigned controls[32] = {[26] = 160};
+static unsigned control_reads[32];
 
 int Psyz_GpuConfigureGeometry(PsyzGeometryCallback value, int textures, int precision, int depth)
 {
@@ -22,7 +25,33 @@ int Psyz_GpuConfigureGeometry(PsyzGeometryCallback value, int textures, int prec
 
 void Psyz_GpuResetGeometryDepth(void) { ++resets; }
 MATRIX *ReadRotMatrix(MATRIX *output) { *output = transform; return output; }
-unsigned Psyz_GteCtrlRead(unsigned reg) { return reg == 26 ? 160 : 0; }
+unsigned Psyz_GteCtrlRead(unsigned reg) { ++control_reads[reg]; return controls[reg]; }
+
+static void CheckCaptureControls(void)
+{
+    DVECTOR xy[2] = {{0, 0}, {0, 0}};
+    SVECTOR vertices[2] = {{1, -1, 300, 0}, {-1, 3, 320, 0}};
+    PsyzProjectedVertex result;
+    controls[24] = 163840; /* +2.5 pixels */
+    controls[25] = (unsigned)-212992; /* -3.25 pixels */
+    memset(control_reads, 0, sizeof(control_reads));
+    MgsTextureCorrectionBegin(0);
+    MgsTextureCorrectionCapture(NULL, 0, NULL);
+    assert(!control_reads[24] && !control_reads[25] && !control_reads[26]);
+    MgsTextureCorrectionCapture(vertices, 2, xy);
+    assert(control_reads[24] == 1 && control_reads[25] == 1 && control_reads[26] == 1);
+    assert(callback(&xy[0], &result));
+    assert(fabsf(result.x - (2.5f + 160.0f / 300)) < 0.00001f);
+    assert(fabsf(result.y - (-3.25f - 160.0f / 300)) < 0.00001f);
+    assert(callback(&xy[1], &result) && result.x == 2 && result.y == -1.75f);
+    controls[24] = 65536;
+    controls[25] = 131072;
+    controls[26] = 320;
+    MgsTextureCorrectionCapture(vertices, 2, xy);
+    assert(callback(&xy[1], &result) && result.x == 0 && result.y == 5);
+    controls[24] = controls[25] = 0;
+    controls[26] = 160;
+}
 
 static void CheckMidpoints(void)
 {
@@ -93,6 +122,7 @@ int main(void)
     SVECTOR vertex = {1, -1, 300, 0};
     PsyzProjectedVertex result;
     assert(MgsTextureCorrectionConfigure(1, 1, 1));
+    CheckCaptureControls();
     CheckMidpoints();
     CheckOfficeFloorIdentity();
     MgsTextureCorrectionBegin(0);

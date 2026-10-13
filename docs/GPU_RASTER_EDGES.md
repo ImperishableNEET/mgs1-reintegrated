@@ -89,3 +89,47 @@ new C tests scan clean; the touched vendor C/header scope retains five nonfixabl
 file/function-length warnings and three informational TODO findings. cppcheck
 and clang-tidy are unavailable, and Aislop does not analyze GLSL; all generated
 shader formats passed their respective compilation steps.
+
+## Screen-derived framebuffer textures (2026-10-13)
+
+`equip/kogaku2.c` derives camouflage UVs from screen coordinates and changes the
+model's texture pages to 16-bit front-buffer pages at X 0/64 or 320/384, Y 0.
+Those UVs require affine interpolation even when the model has depth metadata.
+The renderer keeps its precise screen positions and depth testing, but excludes
+these screen-derived coordinates from perspective texture interpolation.
+
+The same verified-page predicate now selects scaled framebuffer sampling for
+textured polygons in a separate batch. It also covers 2D copy polygons using
+those front-buffer pages; projected-model metadata is not required for a
+framebuffer copy to retain its source detail. This deliberately changes the old
+unscoped polygon-copy fallback. It does not globally enable canvas sampling:
+unscoped sprites retain native lookup, indexed world textures retain their
+palette path, and ordinary 16-bit texture pages retain perspective correction.
+A sampling-class change flushes the earlier batch before changing its source.
+
+Controlled fixtures reproduce perspective UV distortion with the affine guard
+disabled, and lost subpixel source colors with scaled feedback disabled. Fixed
+1x/4x cases preserve the four page mappings, subpixel positions, source mask bits,
+physical depth and transitions to untextured/indexed/non-framebuffer textures.
+The framebuffer fixture now compares verified 2D copies directly against every
+source RGB sample, while independently requiring the unscoped sprite to show
+its original native-resolution loss. Its 2x/8x tests and held-resolution-change
+checks pass. These are synthetic GPU cases, not a new campaign playthrough.
+
+The shared sight packet bridge now extends authored opaque black edge masks
+to widescreen bounds. Integral rifle2 uses polygon wedges with paired outer
+vertices at X=0/320 and an inner edge describing the circular aperture. Only
+those outer vertices move to 160 +/- the output half-width; inner geometry,
+colors, packet order and animation remain unchanged. Their animation has zero
+outer X displacement, so entry/exit Y animation is retained. This shared path
+covers the PSG1 and Sniper Wolf's fast cutscene sight, plus camera and gas-mask
+sight masks. Semi-transparent crosshairs, textured rims and interior polygons
+remain unchanged. CPU fixtures cover 4:3, widescreen/ultrawide wedges and negative
+cases. The engine build and 105-patch verification pass; live GPU validation was
+not run because the recent whole-PC crash remains under investigation.
+
+Gas-mask follow-up: the actual `mask` SGT (0x1303) uses white F4 panels
+with subtractive ABR=2 blending, unlike the black binocular/scope wedges.
+Extend their paired outer boundary vertices as well, gated by exact white,
+semi-transparency and ABR=2. User confirmed PSG1 and camera masks; gas-mask
+correction has CPU coverage but awaits gameplay confirmation.

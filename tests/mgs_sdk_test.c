@@ -16,6 +16,14 @@ static Uint16 rumble_low, rumble_high;
 static int rumble_calls;
 static int replaying;
 int GM_PlayerStatus;
+int GM_GameOverTimer;
+int ReiReintegratedTitleVisible;
+static char test_area[8];
+char *GM_GetArea(int flag) { (void)flag; return test_area; }
+static void SetTestArea(const char *area)
+{
+    snprintf(test_area, sizeof(test_area), "%s", area);
+}
 extern int _spu_rev_offsetaddr;
 
 /* Pinned SDL's internal keyboard entry points keep synthetic input in-process. */
@@ -90,7 +98,24 @@ static void TestPortSwap(void)
     unsigned char original[2][PSYZ_PAD_BUF_LEN], frame[PSYZ_PAD_BUF_LEN];
     assert(Psyz_PadsHostPort(-1) == -1 && Psyz_PadsHostPort(2) == -1);
     assert(!*MgsControllerPortsHint());
+    SetTestArea("s07b");
     GM_PlayerStatus = PLAYER_SECOND_AVAILABLE;
+    MgsControllerPortsUpdate();
+    assert(SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
+    assert(!*MgsControllerPortsHint());
+    for (int i = 0; i < 2; ++i) {
+        GM_GameOverTimer = -2; /* Meryl's suspended scene is not a death. */
+        MgsControllerPortsUpdate();
+        GM_GameOverTimer = 0;
+        MgsControllerPortsUpdate();
+    }
+    assert(!*MgsControllerPortsHint());
+    for (int i = 0; i < 2; ++i) {
+        GM_GameOverTimer = 4;
+        MgsControllerPortsUpdate();
+        GM_GameOverTimer = 0;
+        MgsControllerPortsUpdate();
+    }
     assert(strstr(MgsControllerPortsHint(), "SWITCH TO PORT 2"));
     for (int port = 0; port < 2; ++port)
         ReadFrame(port, original[port]);
@@ -104,9 +129,17 @@ static void TestPortSwap(void)
     assert(Psyz_PadsRumble(1, 1234, 5678, 100));
     assert(rumble_low == 1234 && rumble_high == 5678);
     assert(strstr(MgsControllerPortsHint(), "RETURN TO PORT 1"));
+    SetTestArea("s08a");
+    MgsControllerPortsUpdate();
+    /* Other scripts can enable the second controller; routing follows the
+     * recovered availability flag even when Mantis's UI hint is hidden. */
+    assert(SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
+    assert(strstr(MgsControllerPortsHint(), "RETURN TO PORT 1"));
     PressPortKey(1);
     assert(Psyz_PadsHostPort(0) == 1);
     replaying = 1;
+    SetTestArea("s07b");
+    MgsControllerPortsUpdate();
     GM_PlayerStatus |= PLAYER_SECOND_CONTROLLER;
     PressPortKey(0);
     assert(Psyz_PadsHostPort(0) == 1);
@@ -114,6 +147,9 @@ static void TestPortSwap(void)
     replaying = 0;
     PressPortKey(0);
     assert(Psyz_PadsHostPort(0) == 0 && Psyz_PadsHostPort(1) == 1);
+    SetTestArea("s08a");
+    MgsControllerPortsUpdate();
+    assert(!*MgsControllerPortsHint());
     GM_PlayerStatus = 0;
     assert(!*MgsControllerPortsHint());
 }
@@ -157,6 +193,9 @@ static void TestAnalogAxes(SDL_Joystick *controllers[2])
         {64, 192, 0, 255}, {192, 64, 255, 0},
         {128, 129, 127, 128}, {128, 128, 128, 128}
     };
+    /* The established PsyZ mapping also projects extreme left-stick axes
+     * into digital directions; this fixture previously ignored those bits. */
+    const unsigned char directions[] = {0x3f, 0xcf, 0xff, 0xff};
     unsigned char frame[PSYZ_PAD_BUF_LEN];
     for (unsigned sample = 0; sample < sizeof(axes) / sizeof(axes[0]); ++sample) {
         for (int port = 0; port < 2; ++port) {
@@ -166,7 +205,7 @@ static void TestAnalogAxes(SDL_Joystick *controllers[2])
                 port ? SDL_GAMEPAD_BUTTON_NORTH : SDL_GAMEPAD_BUTTON_SOUTH, true));
             ReadFrame(port, frame);
             assert(frame[0] == 0 && frame[1] == PSYZ_CTRL_ANALOG_PAD);
-            assert(frame[2] == 0xff && frame[3] == (port ? 0xef : 0xbf));
+            assert(frame[2] == directions[sample] && frame[3] == (port ? 0xef : 0xbf));
             assert(memcmp(frame + 4, bytes[sample], sizeof(bytes[sample])) == 0);
         }
     }
@@ -178,7 +217,7 @@ static void TestAnalogAxes(SDL_Joystick *controllers[2])
 static void TestModeSwitch(SDL_Joystick *controller)
 {
     unsigned char frame[PSYZ_PAD_BUF_LEN];
-    const unsigned char digital[] = {0, PSYZ_CTRL_DIGITAL_PAD, 0xff, 0xff, 0, 0, 0, 0};
+    const unsigned char digital[] = {0, PSYZ_CTRL_DIGITAL_PAD, 0xdf, 0xff, 0, 0, 0, 0};
     assert(SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFTX, 32767));
     assert(PadSetMainMode(0, 0, 3));
     ReadFrame(0, frame);

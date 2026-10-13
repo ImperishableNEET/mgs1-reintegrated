@@ -21,6 +21,7 @@ typedef struct {
 static LanguagePack text_pack, voice_pack;
 static char description[1024];
 static LanguageRecord *current_stream;
+static LanguageRecord *glyph_font;
 static unsigned stream_sector;
 static int ValidStream(const LanguageRecord *record);
 
@@ -55,6 +56,7 @@ static void ClosePack(LanguagePack *pack)
 void MgsLanguageClose(void)
 {
     current_stream = NULL;
+    glyph_font = NULL;
     ClosePack(&text_pack);
     ClosePack(&voice_pack);
 }
@@ -238,6 +240,10 @@ int MgsLanguageConfigure(const char *text, const char *voice)
         MgsLanguageClose();
         return Failure("Selected voice pack contains no speech streams.");
     }
+    /* Pack indexes remain immutable until Close. Font rendering asks for the
+     * same record per glyph, so resolve it once after successful configure. */
+    LanguagePack *font_pack = text_pack.language == 2 ? &text_pack : &voice_pack;
+    glyph_font = FindRecord(font_pack, FONT, 0, 0);
     return 1;
 }
 
@@ -268,8 +274,7 @@ const unsigned char *MgsLanguageGlyph(unsigned code, unsigned *descriptor)
 {
     if (code < 128 || code >= 255)
         return NULL;
-    LanguagePack *pack = text_pack.language == 2 ? &text_pack : &voice_pack;
-    LanguageRecord *font = FindRecord(pack, FONT, 0, 0);
+    LanguageRecord *font = glyph_font;
     if (!font)
         return NULL;
     unsigned table_end = ReadBig32(font->data), pos = 8 + (code - 32) * 4;

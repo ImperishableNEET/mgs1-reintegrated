@@ -302,3 +302,72 @@ Physical user swap confirmation pending. F2 manual routing remains authoritative
 
 2026-10-13 player confirms corrected physical controller hot swap works.
 Candidate accepted for publication as v0.2.0-reintegrated.2 experimental prerelease.
+
+2026-10-13 autonomous batch completed early within the requested one-hour limit:
+Windows wired-HID controller socket switching requires matching serial plus verified
+physical USB topology; same-socket reconnect remains normal. Read-only topology probe
+resolved29 interfaces; physical socket-movement playtest pending. Family/manual fallbacks
+retained, no game launched. Mantis hint counts actual positive GameOverTimer transitions,
+not Meryl's negative nonfatal states; manual return prompt persists after fight.
+Scanner reserves fair shares for roots and nested pass;32-entry regression catches noisy
+root starvation. Sharp-text span buffer best-effort shrink saves5,312,596bytes (~5.07MiB)
+for shipped atlas, with unchanged2x/8x render expectations. No FPS claim.
+Seven focused checks pass (SDK input/hints, controller policy, fair scanner, font2x/8x,
+overlay sections, launcher). SDK expected D-pad bytes corrected to existing analog-stick
+projection; production input projection unchanged. No simulation timing/RNG/collision edits.
+Residual floor/shadow audit found no additional narrow evidence-backed exception; mesh
+identification remains required. No speculative renderer workaround applied.
+Separate unpublished Reintegrated-overnight-20261013 candidate packaged with matching
+symbols and source delta; published v0.2.0-reintegrated.2 untouched. Engine SHA256:
+33B4847CAE383BFEF9213270E37B2F46909D71298BDB3DA311919C910944D210.
+
+2026-10-13 unpublished font/modern-renderer/menu candidate:
+Optional licensed interface coverage atlas replaces tagged 8x6 menu lettering
+(PAUSE, save/load headings, Codec labels), with native layout/palette/mask and
+unsupported/source-modification fallbacks. Straight diagonal variant plus faithful
+alternative supplied; all A-Z/0-9 faithful ink verified privately, no retail pixels
+bundled. Actual atlas GPU specimen inspected. Heros glyph batching uses bounded
+112x48 viewport bands; modelled crouch-board uploads fall from98 to41, not an FPS claim.
+Modern renderer now preserves both scaled framebuffer halves directly across
+subtitle-driven scale changes. Held2x-to4x regression:288 changed RGB channels before,
+zero after; downscale and native synchronization also verified. Recognized16bit
+framebuffer polygons use affine screen-space UVs and scaled source sampling while
+retaining model subpixel positioning/depth. Controlled warping/detail-loss baselines
+fail before fixes and pass afterward. Static page policy is specific to this game;
+not every cutscene artifact is claimed resolved. Other texture paths remain tested.
+Widescreen title/main menu expands only7 abstract background layers; logos/portrait/
+menu lettering remain proportioned. States6/7 only; other composed menus stay4:3.
+420-frame title and main-menu captures confirm full-width background/centered layout.
+New Game probe was intentionally held in title for visual capture, so campaign
+completion criterion is unmet by design; no campaign claim. Original saves untouched.
+Torment Nexus LLC ink now matches native op_copy RGB555 color206,173,156, opaque.
+Published release unchanged; all104 MGS patches verified.
+
+2026-10-13 player pause/cutscene clarity regression: launchers forced
+REI_ORIGINAL_RES=1, selecting2x widescreen gameplay while sharp text raised the
+whole frame to7x at2560x1440. Thirty drawn frames after text cleared restored2x.
+Both code audits and paused/unpaused recording crops confirm raster-detail change.
+Modern launcher/Play.ps1 now default to display-resolution rendering; a persisted
+OriginalResolution preference and PowerShell switch keep low-GPU gameplay optional.
+Old settings without the new field adopt display-resolution mode without losing
+other choices. Direct explicit REI_ORIGINAL_RES=1 engine behavior remains intact.
+New140-frame2560x1440 regression covers pause, cooldown, Codec and exit at stable8x
+with no target-resize events. Five focused launch/profile/video checks pass.
+No simulation, dialogue timing, projection or depth code changed in this fix.
+
+2026-10-13 GPU submission failure / whole-PC restart investigation:
+Latest player log ended at SDL_SubmitGPUCommandBuffer at8x in s07c. Its recent
+commands contained about1.37million vertices and140fontchunks each. NVIDIA driver
+errors occurred near failure; later Kernel-Power41 confirms an unclean restart
+with BugcheckCode0. These records do not establish the cause of the whole-PC crash.
+Added shared262144-vertex /32M-feedback-pixel submission bound after complete
+passes and dirty bookkeeping. Font chunks reacquire command buffers after yields;
+RGB, masks and ordering preserved. Agent2x/8x large-font checks passed before
+whole-PC clarification. Further GPU/live-game testing then stopped. Engine CPU
+build succeeds; default stable display-resolution rendering remains intact.
+Window swapchain frame-fence policy unchanged. No driver/registry settings touched.
+Patched candidate needs player validation; no system-stability claim.
+
+
+## Candidate 0.2.0-reintegrated.3 (13 October 2026)
+User confirmed widescreen title, PSG1 scope, gas-mask surround and camera surround, and played through the beginning of the communications tower. Camera item behavior remains imperfect and is deferred to the next release. Full campaign completion is not established. Includes stable modern rendering resolution, bounded GPU submissions, interface font work, HIDEO positioning and shared sight mask coverage. Whole-PC restart root cause remains uncertain.

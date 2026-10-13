@@ -123,9 +123,16 @@ int main(int argc, char **argv)
     write_test_atlas(atlas);
 #ifdef _WIN32
     assert(_putenv_s("REI_CODEC_FONT_ATLAS", atlas) == 0);
+    assert(_putenv_s("REI_INTERFACE_FONT_ATLAS", atlas) == 0);
+    assert(_putenv_s("REI_REINTEGRATED_TITLE", "1") == 0);
+    assert(_putenv_s("REI_SCANLINES", "1") == 0);
 #else
     assert(setenv("REI_CODEC_FONT_ATLAS", atlas, 1) == 0);
+    assert(setenv("REI_INTERFACE_FONT_ATLAS", atlas, 1) == 0);
+    assert(setenv("REI_REINTEGRATED_TITLE", "1", 1) == 0);
+    assert(setenv("REI_SCANLINES", "1", 1) == 0);
 #endif
+    ReiReintegratedTitleVisible = 1;
     assert(Psyz_VideoConfigureWindow(320 * scale, 224 * scale, 0) == 0);
     assert(Psyz_VideoSetPresentation(320, 224, 224) == 0);
     assert(Psyz_VideoSetInternalResolution(scale) == 0);
@@ -162,6 +169,9 @@ int main(int argc, char **argv)
     message_sprite(&enhanced, 20);
     tag_message(&enhanced, &codec_kcb, palette);
     submit(&enhanced);
+    /* Font uploads must survive presentation reusing the same CPU scratch;
+     * the following glyphs must also survive the title/scanline contents. */
+    Psyz_VideoVSync(0);
     DrawSync(0);
     expect_pixel(24, 25, 0x001f); /* authored high-resolution glyph */
     expect_pixel(62, 42, 0);      /* native sprite was suppressed */
@@ -246,6 +256,7 @@ int main(int argc, char **argv)
     submit(&selected);
     DrawSync(0);
     expect_pixel(124, 104, 0x7c1f); /* atlas red adds to existing blue */
+    Psyz_VideoVSync(0);
 
     /* Save/load labels use 14-pixel rows, with native UV four pixels lower. */
     SPRT save_row = {0};
@@ -268,6 +279,74 @@ int main(int argc, char **argv)
     expect_pixel(24, 129, 0x001f); /* entire cap stays inside its row */
     expect_pixel(24, 133, 0);      /* adjacent row and column stay excluded */
 
+    /* Sixteen glyphs force full and partial span batches. Per-glyph RGB and
+     * mask must remain independent when sharing one upload and viewport. */
+    unsigned short batch_palette[16] = {0};
+    batch_palette[3] = 0x001f; batch_palette[7] = 0x83e0;
+    SPRT board = {0}; setSprt(&board); setRGB0(&board, 128, 128, 128);
+    setXY0(&board, 180, 140); setWH(&board, 120, 40);
+    MgsHiResFontClear(&codec_kcb);
+    for (int i = 0; i < 16; ++i)
+        MgsHiResFontGlyph(&codec_kcb, 'A', (i % 8) * 9, (i / 8) * 14, i % 2, 8, 0);
+    MgsHiResFontUpdate(&codec_kcb, batch_palette);
+    MgsHiResFontRegisterSprite(&board.r0, &codec_kcb, board.x0, board.y0, board.w, board.h);
+    submit(&board); DrawSync(0);
+    for (int i = 0; i < 16; ++i)
+        expect_pixel(184 + (i % 8) * 9, 145 + (i / 8) * 14, i % 2 ? 0x83e0 : 0x001f);
+
+    /* 256 glyphs produce 393216 vertices with this atlas, crossing the GPU
+     * work fence mid-sprite. Overlapping alternating RGB/mask colors verify
+     * ordering across reacquired command buffers, not merely the final chunk. */
+    MgsHiResFontClear(&codec_kcb);
+    for (int i = 0; i < 256; ++i)
+        MgsHiResFontGlyph(&codec_kcb, 'A', (i % 16) * 7, (i / 16 % 4) * 7,
+                         i % 2, 8, 0);
+    MgsHiResFontUpdate(&codec_kcb, batch_palette);
+    MgsHiResFontRegisterSprite(&board.r0, &codec_kcb, board.x0, board.y0, board.w, board.h);
+    submit(&board); DrawSync(0);
+    for (int row = 0; row < 4; ++row)
+        for (int column = 0; column < 16; ++column)
+            expect_pixel(184 + column * 7, 145 + row * 7,
+                         column % 2 ? 0x83e0 : 0x001f);
+
+    /* A wide/tall caption must survive the clear shader's clip-space bounds. */
+    SPRT wide = {0}; setSprt(&wide); setRGB0(&wide, 128, 128, 128);
+    setXY0(&wide, 20, 30); setWH(&wide, 252, 100);
+    MgsHiResFontClear(&codec_kcb);
+    MgsHiResFontGlyph(&codec_kcb, 'A', 160, 70, 0, 8, 0);
+    MgsHiResFontUpdate(&codec_kcb, batch_palette);
+    MgsHiResFontRegisterSprite(&wide.r0, &codec_kcb, wide.x0, wide.y0, wide.w, wide.h);
+    submit(&wide); DrawSync(0);
+    expect_pixel(184, 105, 0x001f);
+
+    /* Interface labels preserve native 8x6 box, tint and final packet position. */
+    unsigned short interface_palette[16] = {0, 0xc210};
+    MgsHiResFontSetInterfacePalette(interface_palette);
+    SPRT label = {0};
+    setSprt(&label); setRGB0(&label, 128, 0, 0);
+    setXY0(&label, 20, 180); setWH(&label, 8, 6);
+    setUV0(&label, 40, 24); setClut(&label, 960, 510);
+    MgsHiResFontRegisterInterfaceGlyph(&label.r0, 'A', (unsigned)label.u0 | ((unsigned)label.v0 << 8) | ((unsigned)label.clut << 16));
+    submit(&label); DrawSync(0);
+    expect_pixel(24, 183, 0x8010); /* replacement inside six-pixel cap */
+    expect_pixel(20, 180, 0);      /* native glyph suppressed */
+    expect_pixel(24, 187, 0);      /* authored tall fixture clipped to original box */
+    label.y0 = 190;
+    MgsHiResFontRegisterInterfaceGlyph(&label.r0, 'B', (unsigned)label.u0 | ((unsigned)label.v0 << 8) | ((unsigned)label.clut << 16)); /* absent in atlas */
+    submit(&label); DrawSync(0);
+    expect_pixel(20, 190, 0x001f); /* exact original bitmap fallback */
+    expect_pixel(24, 193, 0);
+    draw_mask(1, 0);
+    label.y0 = 200;
+    MgsHiResFontRegisterInterfaceGlyph(&label.r0, 'A', (unsigned)label.u0 | ((unsigned)label.v0 << 8) | ((unsigned)label.clut << 16));
+    submit(&label); DrawSync(0);
+    expect_pixel(24, 203, 0x8010);
+    draw_mask(0, 0);
+    label.y0 = 210;
+    MgsHiResFontRegisterInterfaceGlyph(&label.r0, 'A', (unsigned)label.u0 | ((unsigned)label.v0 << 8) | ((unsigned)label.clut << 16));
+    label.u0 = 41; /* stale tag must not replace changed native UV */
+    submit(&label); DrawSync(0);
+    expect_pixel(24, 213, 0);
     MgsHiResFontDetach(&codec_kcb);
     assert(remove(atlas) == 0);
     printf("Codec high-resolution atlas %dx: replacement, contact and save crops, additive, AA, mask, fallback and OT order passed\n", scale);

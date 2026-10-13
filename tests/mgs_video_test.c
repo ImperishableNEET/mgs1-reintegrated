@@ -281,6 +281,50 @@ static void CheckMenuStages(const u_long *marker)
     CheckOriginalCanvas(marker);
 }
 
+static void CheckMainMenu(void)
+{
+    MgsVideoStage("title");
+    Expect(PRESENT, 4, 3, 224, 0);
+    assert(MgsVideoTitleBackgroundX(160) == 160);
+    MgsVideoMainMenu(1);
+    assert(checked == event_count); /* held old canvas is not reinterpreted */
+    assert(MgsVideoReferenceRequired() && texture_alignment);
+    assert(MgsVideoHalfWidth() == 160); /* original menu layout stays fixed */
+    CheckClip(-160, 159, -160, 159);
+    assert(MgsVideoTitleBackgroundX(160) == 214);
+    assert(MgsVideoTitleBackgroundX(-160) == -214);
+    assert(MgsVideoTitleBackgroundX(0) == 0);
+    assert(MgsVideoTitleBackgroundX(320) == 427);
+    MgsVideoBeginFrame(0);
+    Expect(TRANSFORM, 3, 4, 160, 0); /* centered; no HUD corner anchoring */
+    u_long canvas = 0xf3000000u | MGS_VIDEO_CANVAS;
+    assert(command_handler(&canvas, 1, command_userdata) == 1);
+    Expect(TRANSFORM, 3, 4, 160, 0);
+    assert(framebuffer_sampling && texture_alignment);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(0);
+    Expect(PRESENT, 2560, 1440, 224, 0);
+    MgsVideoMainMenu(0);
+    assert(checked == event_count);
+    assert(MgsVideoTitleBackgroundX(160) == 160);
+    MgsVideoBeginFrame(1);
+    Expect(TRANSFORM, 1, 1, 480, 0);
+    MgsVideoEndFrame();
+    Expect(SYNC, 0, 0, 0, 0);
+    Expect(TRANSFORM, 1, 1, 0, 0);
+    MgsVideoDisplayFrame(0);
+    assert(checked == event_count); /* completed wide buffer still wide */
+    MgsVideoDisplayFrame(1);
+    Expect(PRESENT, 4, 3, 224, 0);
+    MgsVideoMainMenu(1);
+    MgsVideoStage("s00a");
+    Expect(PRESENT, 2560, 1440, 224, 0);
+    assert(!MgsVideoReferenceRequired());
+    assert(MgsVideoTitleBackgroundX(160) == 160); /* stage reset */
+}
+
 static void CheckWide(void)
 {
     struct { DR_ENV packet; unsigned canary; } storage = {0};
@@ -506,10 +550,51 @@ static void CheckSubtitleResolution(int sharp)
     assert(checked == event_count);
 }
 
+static void CheckStableSharpResolution(void)
+{
+    /* PAUSE uses the subtitle board. Ending it must not change world raster
+     * quality, including the old thirty-frame text grace period. */
+    MgsVideoText(1);
+    for (int phase = 0; phase < 4; ++phase) {
+        if (phase == 1) MgsVideoText(0);
+        if (phase == 2) MgsVideoCodec(1);
+        if (phase == 3) MgsVideoCodec(0);
+        for (int frame = 0; frame < 35; ++frame) {
+            int which = frame & 1;
+            MgsVideoBeginFrame(which);
+            Expect(TRANSFORM, phase == 2 ? 1 : 3, phase == 2 ? 1 : 4,
+                   which ? 480 : 160, phase == 2 ? 0 : 1);
+            MgsVideoEndFrame();
+            Expect(SYNC, 0, 0, 0, 0);
+            Expect(TRANSFORM, 1, 1, 0, 0);
+            assert(checked == event_count); /* specifically no SCALE events */
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
     const char *mode = argv[1];
+    if (!strcmp(mode, "modern-sharp")) {
+#ifdef _WIN32
+        _putenv("REI_ORIGINAL_RES=0");
+        _putenv("REI_CODEC_FONT_ATLAS=fixture");
+#else
+        setenv("REI_ORIGINAL_RES", "0", 1);
+        setenv("REI_CODEC_FONT_ATLAS", "fixture", 1);
+#endif
+        MgsVideoOptions options = {2560, 1440, 1, 0};
+        assert(MgsVideoConfigure(&options));
+        Expect(WINDOW, 2560, 1440, 0, 0);
+        Expect(SCALE, 8, 0, 0, 0);
+        Expect(PRESENT, 2560, 1440, 224, 0);
+        Expect(TRANSFORM, 1, 1, 0, 0);
+        Expect(REGISTER, 0xf3, 0, 0, 0);
+        CheckStableSharpResolution();
+        puts("Stable modern pause/subtitle/Codec raster contract PASS");
+        return 0;
+    }
     if (!strcmp(mode, "native-wide") || !strcmp(mode, "native-original") || !strcmp(mode, "native-sharp")) {
 #ifdef _WIN32
         _putenv("REI_ORIGINAL_RES=1");
@@ -543,7 +628,7 @@ int main(int argc, char **argv)
         else if (!strcmp(mode, "original")) options.widescreen = 0;
         else if (!strcmp(mode, "oversize")) options.width = 7680;
         else if (!strcmp(mode, "aspect")) options = (MgsVideoOptions){320, 720, 1, 0};
-        else assert(!strcmp(mode, "wide") || !strcmp(mode, "capacity"));
+        else assert(!strcmp(mode, "wide") || !strcmp(mode, "main-menu") || !strcmp(mode, "capacity"));
         int rejected = !strcmp(mode, "oversize") || !strcmp(mode, "aspect");
         assert(MgsVideoConfigure(&options) == !rejected);
         if (!rejected) {
@@ -559,6 +644,7 @@ int main(int argc, char **argv)
             Expect(TRANSFORM, 1, 1, 0, 0);
             Expect(REGISTER, 0xf3, 0, 0, 0);
             if (!strcmp(mode, "wide")) CheckWide();
+            if (!strcmp(mode, "main-menu")) CheckMainMenu();
             if (!strcmp(mode, "original")) CheckOriginalOutput();
             if (!strcmp(mode, "capacity")) {
                 DR_ENV packet = {0};

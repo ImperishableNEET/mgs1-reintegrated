@@ -5,8 +5,14 @@ typedef struct CodecFontSpan {
     unsigned char x, y, width, coverage;
 } CodecFontSpan;
 
-static CodecFontSpan* codec_font_spans;
-static unsigned codec_font_first[96], codec_font_count[95];
+typedef struct CoverageFontAtlas {
+    CodecFontSpan *spans;
+    unsigned first[96], count[95];
+} CoverageFontAtlas;
+static CoverageFontAtlas codec_atlas, interface_atlas;
+#define codec_font_spans codec_atlas.spans
+#define codec_font_first codec_atlas.first
+#define codec_font_count codec_atlas.count
 static bool codec_font_gpu_failed;
 static bool codec_font_draw_logged;
 
@@ -14,10 +20,12 @@ static void FreeCodecFontAtlas(void) {
     SDL_free(codec_font_spans);
     codec_font_spans = NULL;
     memset(codec_font_count, 0, sizeof(codec_font_count));
+    SDL_free(interface_atlas.spans);
+    memset(&interface_atlas, 0, sizeof(interface_atlas));
 }
 
-static bool LoadCodecFontAtlas(void) {
-    const char* path = SDL_getenv("REI_CODEC_FONT_ATLAS");
+static bool LoadCoverageFontAtlas(const char *environment, CoverageFontAtlas *font) {
+    const char* path = SDL_getenv(environment);
     if (!path || !*path) return false;
     SDL_Surface* loaded = SDL_LoadBMP(path);
     if (!loaded) {
@@ -39,10 +47,11 @@ static bool LoadCodecFontAtlas(void) {
         SDL_DestroySurface(atlas);
         return false;
     }
+    CoverageFontAtlas candidate = {0};
     unsigned count = 0;
     bool valid = true;
     for (unsigned glyph = 0; glyph < 95 && valid; ++glyph) {
-        codec_font_first[glyph] = count;
+        candidate.first[glyph] = count;
         for (int y = 0; y < 112 && valid; ++y) {
             const u8* row = (const u8*)atlas->pixels +
                 ((glyph / 16) * 112 + y) * atlas->pitch + (glyph % 16) * 128 * 4;
@@ -61,7 +70,7 @@ static bool LoadCodecFontAtlas(void) {
                 x = end;
             }
         }
-        codec_font_count[glyph] = count - codec_font_first[glyph];
+        candidate.count[glyph] = count - candidate.first[glyph];
     }
     SDL_UnlockSurface(atlas);
     SDL_DestroySurface(atlas);
@@ -70,21 +79,34 @@ static bool LoadCodecFontAtlas(void) {
         WARNF("Codec font atlas is not grayscale; using original text");
         return false;
     }
-    FreeCodecFontAtlas();
-    /* FreeCodecFontAtlas clears counts, so restore them from the offsets. */
-    codec_font_first[95] = count;
+    /* Parsing reserves the worst case; retain only the spans actually used.
+     * A failed shrink leaves the valid allocation intact. Keep one element for
+     * an empty atlas so its existing non-null/fallback behavior is unchanged. */
+    CodecFontSpan* compact = SDL_realloc(spans, (count ? count : 1u) * sizeof(*spans));
+    if (compact) spans = compact;
+    SDL_free(font->spans);
+    /* Restore counts from offsets after successful complete validation. */
+    candidate.first[95] = count;
     for (unsigned i = 0; i < 95; ++i)
-        codec_font_count[i] = codec_font_first[i + 1] - codec_font_first[i];
-    codec_font_spans = spans;
+        candidate.count[i] = candidate.first[i + 1] - candidate.first[i];
+    candidate.spans = spans;
+    *font = candidate;
     codec_font_gpu_failed = false;
     codec_font_draw_logged = false;
-    INFOF("optional Codec font atlas loaded (%u coverage spans)", count);
+    INFOF("optional coverage font atlas loaded (%u coverage spans)", count);
     return true;
 }
 
-static bool DrawCodecFontChunk(SDL_GPUCommandBuffer* cmd, const Vertex* vertices,
+static bool LoadCodecFontAtlas(void) {
+    bool codec = LoadCoverageFontAtlas("REI_CODEC_FONT_ATLAS", &codec_atlas);
+    bool interface_font = LoadCoverageFontAtlas("REI_INTERFACE_FONT_ATLAS", &interface_atlas);
+    return codec || interface_font;
+}
+
+static bool DrawCodecFontChunk(const Vertex* vertices,
                               unsigned count, const SDL_GPUViewport* viewport,
-                              const SDL_Rect* clip, bool additive) {
+                              const SDL_Rect* clip, const SDL_Rect* dirty, bool additive) {
+    SDL_GPUCommandBuffer* cmd = AcquireCmd();
     void* mapped = SDL_MapGPUTransferBuffer(device, presentation_transfer, true);
     if (!mapped) return false;
     memcpy(mapped, vertices, count * 2 * sizeof(*vertices));
@@ -114,14 +136,19 @@ static bool DrawCodecFontChunk(SDL_GPUCommandBuffer* cmd, const Vertex* vertices
     gpu_work.draws += 2;
     gpu_work.vertices += count * 2;
     SDL_EndGPURenderPass(pass);
+    if (internal_res > 1) {
+        MarkNativeResolve(*dirty);
+        MarkScaledVramDirty(*dirty);
+    } else MarkVramDirty(*dirty);
+    YieldGpuWorkIfNeeded();
     return true;
 }
 
 static bool DrawCodecFontSprite(const MgsHiResFontSnapshot* text,
-                               const u_long* packet, int length) {
+                               const u_long* packet, int length, const CoverageFontAtlas *font) {
     const unsigned opcode = packet[0] >> 24;
     const bool additive = opcode == 0x66;
-    if (codec_font_gpu_failed || !pipe_codec_font || !pipe_codec_font_add || !pipe_codec_mask || !codec_font_spans || !presentation_vbuf ||
+    if (codec_font_gpu_failed || !pipe_codec_font || !pipe_codec_font_add || !pipe_codec_mask || !font->spans || !presentation_vbuf ||
         !presentation_transfer || length < 4 || (opcode != 0x64 && !additive) ||
         preserve_masked || !text->count ||
         text->count > MGS_HIRES_FONT_MAX_GLYPHS || text->width <= 0 || text->height <= 0)
@@ -132,7 +159,11 @@ static bool DrawCodecFontSprite(const MgsHiResFontSnapshot* text,
         if (glyph->code < 32 || glyph->code > 126 || glyph->color > 3 ||
             text->palette[glyph->color * 4] != 0 ||
             text->palette[glyph->color * 4 + 3] == 0 ||
-            (glyph->code != ' ' && !codec_font_count[glyph->code - 32])) return false;
+            (glyph->x - text->source_x) * 8 < -32768 ||
+            (glyph->x - text->source_x) * 8 + 128 > 32767 ||
+            (glyph->y - text->source_y) * 8 < -32768 ||
+            (glyph->y - text->source_y) * 8 + 112 > 32767 ||
+            (glyph->code != ' ' && !font->count[glyph->code - 32])) return false;
     }
     const float transform = frame_transform_bypass ? 1.0f : frame_scale_x;
     const float grid = GetDrawGridXScale();
@@ -150,10 +181,20 @@ static bool DrawCodecFontSprite(const MgsHiResFontSnapshot* text,
     const SDL_Rect clip = {dirty.x * (int)internal_res, dirty.y * (int)internal_res,
         dirty.w * (int)internal_res, dirty.h * (int)internal_res};
     Draw_FlushBuffer();
-    SDL_GPUCommandBuffer* cmd = AcquireCmd();
-    if (!cmd) return false;
-    static Vertex vertices[PRESENTATION_VERTEX_CAPACITY];
+    Vertex* vertices = presentation_vertices;
     bool drew = false;
+    enum { batch_spans = PRESENTATION_VERTEX_CAPACITY / 12 };
+    Vertex *mask_vertices = vertices + batch_spans * 6;
+    unsigned queued = 0;
+    /* Clear shaders clip to a 1024x512 coordinate domain. A band of 112x48
+     * logical pixels leaves room for each 16x14 atlas cell without NDC clipping.
+     * Band changes flush in original glyph order, preserving overlapping ink. */
+    int band_x = 0, band_y = 0;
+    SDL_GPUViewport viewport = {
+        .x = origin_x * internal_res, .y = origin_y * internal_res,
+        .w = VRAM_W * internal_res * scale_x / 8.0f,
+        .h = VRAM_H * internal_res / 8.0f,
+        .min_depth = 0, .max_depth = 1};
     for (unsigned i = 0; i < text->count; ++i) {
         const MgsHiResGlyph* glyph = &text->glyphs[i];
         /* A contact sprite selects one of eight rows from a shared KCB.
@@ -163,38 +204,60 @@ static bool DrawCodecFontSprite(const MgsHiResFontSnapshot* text,
             glyph->y < text->source_y ||
             glyph->y >= text->source_y + text->height) continue;
         unsigned index = glyph->code - 32;
-        unsigned remaining = codec_font_count[index], offset = codec_font_first[index];
+        unsigned remaining = font->count[index], offset = font->first[index];
         unsigned short color = text->palette[glyph->color * 4 + 3];
         const u8 r = (u8)(CLAMP(((color & 31) * (packet[0] & 255)) / 128, 0, 31) * 255 / 31);
         const u8 g = (u8)(CLAMP((((color >> 5) & 31) * ((packet[0] >> 8) & 255)) / 128, 0, 31) * 255 / 31);
         const u8 b = (u8)(CLAMP((((color >> 10) & 31) * ((packet[0] >> 16) & 255)) / 128, 0, 31) * 255 / 31);
-        const SDL_GPUViewport viewport = {
-            .x = (origin_x + (glyph->x - text->source_x) * scale_x) * internal_res,
-            .y = (origin_y + glyph->y - text->source_y) * internal_res,
-            .w = VRAM_W * internal_res * scale_x / 8.0f,
-            .h = VRAM_H * internal_res / 8.0f,
-            .min_depth = 0, .max_depth = 1};
-        while (remaining) {
-            unsigned spans = remaining;
-            if (spans > PRESENTATION_VERTEX_CAPACITY / 12) spans = PRESENTATION_VERTEX_CAPACITY / 12;
-            for (unsigned j = 0; j < spans; ++j) {
-                const CodecFontSpan* run = &codec_font_spans[offset + j];
-                PresentationRect(vertices + j * 6, run->x, run->y, run->width, 1,
-                                 r, g, b, run->coverage);
+        int next_x = ((glyph->x - text->source_x) / 112) * 112;
+        int next_y = ((glyph->y - text->source_y) / 48) * 48;
+        if (remaining && (next_x != band_x || next_y != band_y)) {
+            if (queued) {
+                memmove(vertices + queued * 6, mask_vertices, queued * 6 * sizeof(*vertices));
+                if (!DrawCodecFontChunk(vertices, queued * 6, &viewport, &clip, &dirty, additive)) {
+                    WARNF("Codec font GPU upload failed: %s", SDL_GetError());
+                    codec_font_gpu_failed = true;
+                    if (!drew) return false;
+                    goto completed;
+                }
+                drew = true; queued = 0;
             }
-            memcpy(vertices + spans * 6, vertices, spans * 6 * sizeof(*vertices));
-            for (unsigned j = spans * 6; j < spans * 12; ++j)
-                vertices[j].a = force_mask_bit || (color & 0x8000) ? 255 : 0;
-            if (!DrawCodecFontChunk(cmd, vertices, spans * 6, &viewport, &clip, additive)) {
-                WARNF("Codec font GPU upload failed: %s", SDL_GetError());
-                codec_font_gpu_failed = true;
-                if (!drew) return false;
-                goto completed;
-            }
-            drew = true;
-            remaining -= spans;
-            offset += spans;
+            band_x = next_x; band_y = next_y;
+            viewport.x = (origin_x + band_x * scale_x) * internal_res;
+            viewport.y = (origin_y + band_y) * internal_res;
         }
+        while (remaining) {
+            const CodecFontSpan* run = &font->spans[offset];
+            Vertex *body = vertices + queued * 6;
+            Vertex *mask = mask_vertices + queued * 6;
+            PresentationRect(body,
+                (glyph->x - text->source_x - band_x) * 8 + run->x,
+                (glyph->y - text->source_y - band_y) * 8 + run->y,
+                run->width, 1, r, g, b, run->coverage);
+            memcpy(mask, body, 6 * sizeof(*mask));
+            for (unsigned j = 0; j < 6; ++j)
+                mask[j].a = force_mask_bit || (color & 0x8000) ? 255 : 0;
+            ++queued; --remaining; ++offset;
+            if (queued == batch_spans) {
+                memmove(vertices + queued * 6, mask_vertices, queued * 6 * sizeof(*vertices));
+                if (!DrawCodecFontChunk(vertices, queued * 6, &viewport, &clip, &dirty, additive)) {
+                    WARNF("Codec font GPU upload failed: %s", SDL_GetError());
+                    codec_font_gpu_failed = true;
+                    if (!drew) return false;
+                    goto completed;
+                }
+                drew = true;
+                queued = 0;
+            }
+        }
+    }
+    if (queued) {
+        memmove(vertices + queued * 6, mask_vertices, queued * 6 * sizeof(*vertices));
+        if (!DrawCodecFontChunk(vertices, queued * 6, &viewport, &clip, &dirty, additive)) {
+            WARNF("Codec font GPU upload failed: %s", SDL_GetError());
+            codec_font_gpu_failed = true;
+            if (!drew) return false;
+        } else drew = true;
     }
 completed:
     if (drew) {

@@ -20,7 +20,8 @@ int main(int argc, char **argv)
         return 0;
     }
     char root[128], publisher[160], suikoden[160], castlevania[192];
-    const char *roots[2];
+    char noise[160], entry[192];
+    const char *roots[5];
     unsigned int mask;
 
     assert(MgsMantisMemoryIdentifyName("Suikoden.exe") == MGS_MANTIS_SUIKODEN);
@@ -46,6 +47,23 @@ int main(int argc, char **argv)
     mask = MgsMantisMemoryScanRoots(roots, 2);
     assert(mask == (MGS_MANTIS_SUIKODEN | MGS_MANTIS_CASTLEVANIA));
 
+    /* A busy earlier library must leave a share of both passes for a later
+     * library's direct and nested title names. CI builds this test with a
+     * deliberately small 32-entry budget. */
+    snprintf(noise, sizeof(noise), ".local/mantis-noise-%d", (int)test_pid());
+    assert(SDL_CreateDirectory(noise));
+    for (int i = 0; i < 40; ++i) {
+        snprintf(entry, sizeof(entry), "%s/junk%02d", noise, i);
+        assert(SDL_CreateDirectory(entry));
+    }
+    roots[0] = noise;
+    roots[1] = noise;
+    roots[2] = NULL;
+    roots[3] = "";
+    roots[4] = root;
+    mask = MgsMantisMemoryScanRoots(roots, 5);
+    assert(mask == (MGS_MANTIS_SUIKODEN | MGS_MANTIS_CASTLEVANIA));
+
     MgsMantisMemoryConfigureInstalled(mask);
     assert(MgsMantisMemoryInstalledEnabled());
     assert(MgsMantisMemoryInstalledMask() == mask);
@@ -59,6 +77,11 @@ int main(int argc, char **argv)
     assert(SDL_RemovePath(castlevania));
     assert(SDL_RemovePath(suikoden));
     assert(SDL_RemovePath(publisher));
+    for (int i = 0; i < 40; ++i) {
+        snprintf(entry, sizeof(entry), "%s/junk%02d", noise, i);
+        assert(SDL_RemovePath(entry));
+    }
+    assert(SDL_RemovePath(noise));
     assert(SDL_RemovePath(root));
     puts("mantis memory scanner passed");
     return 0;

@@ -7,6 +7,7 @@ param(
     [switch]$CodecTurbo = $true,
     [switch]$MissionLogFast = $true,
     [switch]$SharpCodecFont,
+    [switch]$OriginalResolution,
     [switch]$FirstPersonMoveShoot,
     [ValidatePattern('^(installed|random|off|[1-9][0-9]{0,9})$')]
     [string]$MantisMemory = 'installed'
@@ -31,12 +32,12 @@ if (-not $Executable) {
 if (-not $Executable) { throw 'Build the modern renderer first; see README.md.' }
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 @{disc=$Disc;discTwo=$DiscTwo} | ConvertTo-Json | Set-Content -LiteralPath $configPath -Encoding UTF8
-$names = @('REI_ENGLISH_CAPTIONS','REI_ORIGINAL_RES','REI_REINTEGRATED_TITLE','REI_SCANLINES','REI_CODEC_TURBO','REI_MISSION_LOG_FAST','REI_FIRST_PERSON_MOVE_SHOOT','REI_CODEC_FONT_ATLAS','REI_TITLE_HOLD','REI_TITLE_PREVIEW','REI_PROBE_STICK','REI_WINDOW_SMOKE','REI_PROBE_CODEC_TURBO','REI_PROBE_CODEC_RELEASE')
+$names = @('REI_ENGLISH_CAPTIONS','REI_ORIGINAL_RES','REI_REINTEGRATED_TITLE','REI_SCANLINES','REI_CODEC_TURBO','REI_MISSION_LOG_FAST','REI_FIRST_PERSON_MOVE_SHOOT','REI_CODEC_FONT_ATLAS','REI_INTERFACE_FONT_ATLAS','REI_TITLE_HOLD','REI_TITLE_PREVIEW','REI_PROBE_STICK','REI_WINDOW_SMOKE','REI_PROBE_CODEC_TURBO','REI_PROBE_CODEC_RELEASE')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name,'Process'); [Environment]::SetEnvironmentVariable($name,$null,'Process') }
 try {
     $env:REI_ENGLISH_CAPTIONS='1'
-    $env:REI_ORIGINAL_RES='1'
+    $env:REI_ORIGINAL_RES = if ($OriginalResolution) { '1' } else { '0' }
     $env:REI_REINTEGRATED_TITLE='1'
     if ($Scanlines) { $env:REI_SCANLINES='1' }
     if ($CodecTurbo) { $env:REI_CODEC_TURBO='1' }
@@ -46,6 +47,8 @@ try {
         $atlas = Join-Path (Split-Path -Parent $Executable) 'fonts/texgyreheros_regular_ascii8x_coverage.bmp'
         if (-not (Test-Path -LiteralPath $atlas)) { throw "Sharp Codec font atlas is missing: $atlas" }
         $env:REI_CODEC_FONT_ATLAS = $atlas
+        $interfaceAtlas = Join-Path (Split-Path -Parent $Executable) 'fonts/interface-font.bmp'
+        if (Test-Path -LiteralPath $interfaceAtlas) { $env:REI_INTERFACE_FONT_ATLAS = $interfaceAtlas }
     }
     $gameArgs = @('--disc',$Disc,'--resolution',$Resolution)
     if ($MantisMemory -ne 'off') {

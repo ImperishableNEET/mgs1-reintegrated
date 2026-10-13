@@ -22,6 +22,10 @@ static bool LoadCodecFontAtlas(void);
 static void FreeCodecFontAtlas(void);
 extern int ReiReintegratedTitleVisible;
 #define PRESENTATION_VERTEX_CAPACITY ((3 * VRAM_H + sizeof(rei_title_rects) / sizeof(rei_title_rects[0])) * 6)
+/* Renderer calls are nonreentrant. Font chunks and presentation effects copy
+ * these CPU vertices into a cycled transfer buffer before any reuse; queued GPU
+ * commands never retain this pointer. Overlay callbacks run after effects. */
+static Vertex presentation_vertices[PRESENTATION_VERTEX_CAPACITY];
 
 #if defined(_WIN32)
 #include "shaders/psx_vert_dxil.h"
@@ -83,6 +87,9 @@ static SDL_GPUTexture* scaled_vram_sample = NULL;
 static SDL_Rect scaled_vram_dirty;
 static SDL_Rect native_resolve_dirty;
 static bool framebuffer_sampling;
+/* Screen-derived model UVs select scaled feedback without changing world
+ * projection, texture alignment or channel transforms. */
+static bool batch_samples_framebuffer;
 static bool texture_screen_aligned;
 static PsyzGeometryCallback geometry_callback;
 static bool correct_textures, precise_geometry, use_depth_buffer;
@@ -171,6 +178,7 @@ static GpuWorkload gpu_work, gpu_history[8];
 static unsigned long long gpu_submissions;
 static unsigned long long gpu_feedback_yields;
 #define GPU_FEEDBACK_PIXEL_BUDGET (32ull * 1024 * 1024)
+#define GPU_VERTEX_BUDGET (256ull * 1024)
 
 static void PrintGpuWorkload(const char *label, const GpuWorkload *work) {
     ERRORF("GPU workload %s submit=%llu scale=%u draws=%llu vertices=%llu font_chunks=%llu "
@@ -278,6 +286,20 @@ static void SubmitCmdAndWait(void) {
         if (!SDL_WaitForGPUFences(device, true, &fence, 1)) GpuFailure("SDL_WaitForGPUFences(wait)");
         SDL_ReleaseGPUFence(device, fence);
     }
+}
+
+/* Split only after a completed pass and its dirty bookkeeping. Coverage fonts
+ * cycle one transfer and vertex allocation per chunk, so feedback pixels alone
+ * do not bound their outstanding GPU memory or command execution time. */
+static void YieldGpuWorkIfNeeded(void) {
+    const unsigned long long pixels = gpu_work.resolve_pixels +
+        gpu_work.snapshot_pixels + gpu_work.native_copy_pixels;
+    if (pixels < GPU_FEEDBACK_PIXEL_BUDGET && gpu_work.vertices < GPU_VERTEX_BUDGET)
+        return;
+    if (gpu_feedback_yields++ == 0)
+        INFOF("splitting GPU workload after %llu vertices and %llu feedback pixels",
+              gpu_work.vertices, pixels);
+    SubmitCmdAndWait();
 }
 
 static SDL_GPUShader* CreateShader(
@@ -833,12 +855,21 @@ static bool ReadsPendingNative(SDL_Rect region) {
 static bool BatchReadsPendingNative(void) {
     if (native_resolve_dirty.w <= 0)
         return false;
+    unsigned previous = 0;
+    bool have_previous = false;
     for (int i = 0; i < n_vertices; ++i) {
         u16 page = vertex_buf[i].t, palette = vertex_buf[i].c;
+        /* A polygon repeats this pair at each vertex. Both regions and the
+         * pending dirty rectangle stay unchanged during this scan. */
+        unsigned key = ((unsigned)page << 16) | palette;
+        if (have_previous && key == previous)
+            continue;
+        previous = key;
+        have_previous = true;
         if (page & TPAGE_NOTEXTURE)
             continue;
         int depth = (page >> 7) & 3;
-        if (depth == 2 && framebuffer_sampling)
+        if (depth == 2 && (framebuffer_sampling || batch_samples_framebuffer))
             continue;
         SDL_Rect texture = {(page & 15) * 64, (page & 16) * 16,
                             64 << SDL_min(depth, 2), 256};
@@ -850,15 +881,7 @@ static bool BatchReadsPendingNative(void) {
     return false;
 }
 
-static bool CreateScaledVramTarget(unsigned n) {
-    if (scaled_vram_sample) {
-        SDL_ReleaseGPUTexture(device, scaled_vram_sample);
-        scaled_vram_sample = NULL;
-    }
-    if (scaled_vram_render) {
-        SDL_ReleaseGPUTexture(device, scaled_vram_render);
-        scaled_vram_render = NULL;
-    }
+static SDL_GPUTexture* CreateScaledVramTarget(unsigned n) {
     const SDL_GPUTextureCreateInfo info = {
         .type = SDL_GPU_TEXTURETYPE_2D,
         .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
@@ -869,13 +892,12 @@ static bool CreateScaledVramTarget(unsigned n) {
         .layer_count_or_depth = 1,
         .num_levels = 1,
     };
-    scaled_vram_render = SDL_CreateGPUTexture(device, &info);
-    if (!scaled_vram_render) {
+    SDL_GPUTexture* target = SDL_CreateGPUTexture(device, &info);
+    if (!target) {
         ERRORF(
             "scaled VRAM texture creation failed (%dx): %s", n, SDL_GetError());
-        return false;
     }
-    return true;
+    return target;
 }
 
 // ensure scaled VRAM does not exceed max allowed texture size
@@ -911,14 +933,22 @@ static void ApplyPendingInternalRes(void) {
     }
     Draw_FlushBuffer(); // render pending prims with the old multiplier
     ResolveNativeVram();
-    /* Resolution changes can follow adjacent subtitle boards. Retire the old
-     * target only after its resolve and prior font uploads have completed;
-     * otherwise deferred releases can retain several large targets at once. */
+    /* Finish prior draws, resolves and font uploads before replacing targets.
+     * Subtitle transitions must not accumulate deferred large allocations. */
     SubmitCmd();
     if (!SDL_WaitForGPUIdle(device)) {
         GpuFailure("SDL_WaitForGPUIdle(internal-resolution change)");
     }
-    if (n > 1 && !CreateScaledVramTarget(n)) {
+    if (scaled_vram_sample) {
+        SDL_ReleaseGPUTexture(device, scaled_vram_sample);
+        scaled_vram_sample = NULL;
+    }
+    ReleaseGeometryDepth();
+    /* Keep only the old color target while allocating its replacement. A
+     * native round trip loses subpixel detail in both held framebuffer halves. */
+    SDL_GPUTexture* old_target = scaled_vram_render;
+    SDL_GPUTexture* new_target = n > 1 ? CreateScaledVramTarget(n) : NULL;
+    if (n > 1 && !new_target) {
         if (window_configuration_requested) {
             ERRORF("cannot allocate the requested %ux render target; refusing a lower resolution", n);
             exit(EXIT_FAILURE);
@@ -927,24 +957,32 @@ static void ApplyPendingInternalRes(void) {
         set_internal_res = 1;
     }
     if (n > 1) {
-        // upscale the whole native VRAM into the freshly created scaled target
+        unsigned source_scale = old_target ? internal_res : 1;
         SDL_GPUCommandBuffer* cmd = AcquireCmd();
         if (cmd) {
             const SDL_GPUBlitInfo blit = {
-                .source = {.texture = vram_render, .w = VRAM_W, .h = VRAM_H},
-                .destination = {.texture = scaled_vram_render,
+                .source = {.texture = old_target ? old_target : vram_render,
+                           .w = VRAM_W * source_scale,
+                           .h = VRAM_H * source_scale},
+                .destination = {.texture = new_target,
                                 .w = VRAM_W * n,
                                 .h = VRAM_H * n},
                 .load_op = SDL_GPU_LOADOP_DONT_CARE,
                 .filter = SDL_GPU_FILTER_NEAREST,
             };
             SDL_BlitGPUTexture(cmd, &blit);
+            /* Complete preservation before retiring its source; only two
+             * color targets coexist, with no stale snapshot or depth target. */
+            SubmitCmdAndWait();
         }
-    } else if (scaled_vram_render) {
-        SDL_ReleaseGPUTexture(device, scaled_vram_render);
-        scaled_vram_render = NULL;
     }
+    if (old_target) SDL_ReleaseGPUTexture(device, old_target);
+    scaled_vram_render = new_target;
     internal_res = n;
+    scaled_vram_dirty = n > 1 ? (SDL_Rect){0, 0, VRAM_W, VRAM_H} : (SDL_Rect){0};
+    /* Non-integral scale ratios can select a different native representative.
+     * Resolve lazily from the new authoritative color target when required. */
+    if (n > 1) MarkNativeResolve(scaled_vram_dirty);
     UpdateScissor();
     INFOF("internal resolution set to %dx (%dx%d)", n, VRAM_W * n, VRAM_H * n);
 }
@@ -1010,7 +1048,7 @@ static void DrawPresentationRects(SDL_GPUCommandBuffer* cmd,
 static void DrawPresentationEffects(SDL_GPUCommandBuffer* cmd,
     SDL_GPUTexture* target, const SDL_Rect* dst, int source_w, int source_h) {
     if ((!presentation_title && !presentation_scanlines) || debug_show_vram) return;
-    static Vertex vertices[PRESENTATION_VERTEX_CAPACITY];
+    Vertex* vertices = presentation_vertices;
     static SDL_Rect clips[3 * VRAM_H];
     unsigned count = 0;
     if (presentation_title && ReiReintegratedTitleVisible) {
@@ -1020,7 +1058,15 @@ static void DrawPresentationEffects(SDL_GPUCommandBuffer* cmd,
                 rei_title_rects[i].r, rei_title_rects[i].g, rei_title_rects[i].b, 255);
             count += 6;
         }
-        DrawPresentationRects(cmd, target, dst, vertices, count, 320, 224, NULL);
+        /* The menu backdrop can fill a wide canvas; authored logo/lettering
+         * retain the same 4:3 composition and pixel aspect as the native menu. */
+        SDL_Rect title_dst = *dst;
+        if ((long long)title_dst.w * 3 > (long long)title_dst.h * 4) {
+            int width = title_dst.h * 4 / 3;
+            title_dst.x += (title_dst.w - width) / 2;
+            title_dst.w = width;
+        }
+        DrawPresentationRects(cmd, target, &title_dst, vertices, count, 320, 224, NULL);
     }
     if (presentation_scanlines && source_h <= VRAM_H) {
         count = 0;
@@ -1277,6 +1323,7 @@ void ResetPlatform(void) {
     frame_centre_x = 0;
     frame_transform_clip = frame_transform_bypass = false;
     framebuffer_sampling = false;
+    batch_samples_framebuffer = false;
     texture_screen_aligned = false;
     native_resolve_dirty = (SDL_Rect){0};
     QuitPlatform();
@@ -1321,20 +1368,18 @@ static unsigned char* AllocRgb888Region(int x, int y, int w, int h) {
         return NULL;
     }
 
-    unsigned char* pixels = malloc((size_t)w * h * 3);
-    u8* rgba = malloc((size_t)w * h * 4);
-    if (!pixels || !rgba) {
-        free(pixels);
-        free(rgba);
+    const size_t count = (size_t)w * h;
+    unsigned char* pixels = malloc(count * 4);
+    if (!pixels) {
         return NULL;
     }
 
-    if (!DownloadVramRegionAsRGBA8888(x, y, w, h, rgba)) {
+    if (!DownloadVramRegionAsRGBA8888(x, y, w, h, pixels)) {
         free(pixels);
-        free(rgba);
         return NULL;
     }
-    const u8* src = rgba;
+    /* Forward compaction keeps every write behind the unread RGBA source. */
+    const u8* src = pixels;
     unsigned char* dst = pixels;
     for (int i = 0; i < w * h; i++) {
         dst[0] = src[0];
@@ -1343,7 +1388,12 @@ static unsigned char* AllocRgb888Region(int x, int y, int w, int h) {
         dst += 3;
         src += 4;
     }
-    free(rgba);
+    /* Shrinking is optional; preserve the valid buffer on failure and avoid
+     * realloc(ptr, 0), which may free it. */
+    if (count) {
+        unsigned char* compact = realloc(pixels, count * 3);
+        if (compact) pixels = compact;
+    }
     return pixels;
 }
 
@@ -1420,24 +1470,27 @@ unsigned char* Psyz_VideoAllocPresentedFrame(int* w, int* h) {
     if (!source) {
         return NULL;
     }
-    SDL_Surface* target = SDL_CreateSurface(output.w, output.h, SDL_PIXELFORMAT_RGB24);
-    unsigned char* result = NULL;
+    unsigned char* result = calloc((size_t)output.w * output.h, 3);
+    /* SDL borrows this tightly packed RGB buffer; no padded intermediate or
+     * final row copy is needed, including at odd output widths. */
+    SDL_Surface* target = result ? SDL_CreateSurfaceFrom(output.w, output.h,
+        SDL_PIXELFORMAT_RGB24, result, output.w * 3) : NULL;
+    bool captured = false;
     SDL_Rect destination = FitGameToWindow(GetCurrentGameAspectRatio(display_size.x, display_size.y), output);
     if (target) {
         SDL_FillSurfaceRect(target, NULL, 0);
         SDL_SetSurfaceBlendMode(source, SDL_BLENDMODE_NONE);
-        if (SDL_BlitSurfaceScaled(source, NULL, target, &destination,
-                                 presentation_width ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST)) {
-            result = malloc((size_t)output.w * output.h * 3);
-            if (result) {
-                for (int row = 0; row < output.h; ++row)
-                    memcpy(result + (size_t)row * output.w * 3,
-                           (u8*)target->pixels + row * target->pitch, (size_t)output.w * 3);
-                *w = output.w;
-                *h = output.h;
-            }
-        }
+        captured = SDL_BlitSurfaceScaled(source, NULL, target, &destination,
+            presentation_width ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+        /* Destroy the wrapper before releasing its externally owned pixels. */
         SDL_DestroySurface(target);
+    }
+    if (captured) {
+        *w = output.w;
+        *h = output.h;
+    } else {
+        free(result);
+        result = NULL;
     }
     SDL_DestroySurface(source);
     return result;
@@ -1716,12 +1769,25 @@ static int ReadPolygonGeometry(const u_long *packets, int length, int code,
     return flags;
 }
 
-static void SetPolygonGeometry(const PsyzProjectedVertex *vertices, int count, bool textured) {
+static bool IsModelFramebufferPage(u16 page) {
+    unsigned base = page & 15;
+    return (page & 0x190) == 0x100 &&
+           (base == 0 || base == 1 || base == 5 || base == 6);
+}
+
+static void SetPolygonGeometry(const PsyzProjectedVertex *vertices, int count,
+                               bool textured, u16 page) {
+    /* Kogaku rewrites model UVs from screen XY and samples the old framebuffer.
+     * Its two 320-pixel halves use pages 0/64 and 320/384 on VRAM row zero.
+     * These coordinates need affine interpolation even on a projected model;
+     * retain its subpixel positions and physical depth independently. */
+    bool screen_uv = IsModelFramebufferPage(page);
     for (int i = 0; i < count; ++i) {
         vertex_cur[i].delta_x = precise_geometry ? vertices[i].x - vertex_cur[i].x : 0;
         vertex_cur[i].delta_y = precise_geometry ? vertices[i].y - vertex_cur[i].y : 0;
         vertex_cur[i].reciprocal_depth = 1.0f / vertices[i].depth;
-        vertex_cur[i].texture_w = correct_textures && textured ? vertices[i].depth : 1.0f;
+        vertex_cur[i].texture_w = correct_textures && textured && !screen_uv
+                                     ? vertices[i].depth : 1.0f;
     }
 }
 
@@ -1749,9 +1815,17 @@ static int DrawPrimitive(u_long *packets, int max_len)
         Draw_FlushBuffer();
     }
     FlushTextureFeedback(packets, max_len, code);
+    int page_word = isGouraud ? 5 : 4;
+    bool source_framebuffer = (code & 0x60) == 0x20 && isTextured &&
+                              max_len > page_word &&
+                              IsModelFramebufferPage((u16)(packets[page_word] >> 16));
+    /* Sampling state is batch-local. Ordinary model textures must not inherit
+     * screen-space feedback merely because they follow a camouflage face. */
+    if (source_framebuffer != batch_samples_framebuffer) Draw_FlushBuffer();
     // to ensure we always have space, we pretend we want to allocate a quad
     // Gouraud read-ahead can write a colour into a fifth vertex slot.
     Draw_EnsureBufferWillNotOverflow(5, 6);
+    batch_samples_framebuffer = source_framebuffer;
     v = vertex_cur;
     for (int i = 0; i < 5; ++i)
         v[i].delta_x = v[i].delta_y = v[i].reciprocal_depth = 0, v[i].texture_w = 1;
@@ -1822,7 +1896,7 @@ static int DrawPrimitive(u_long *packets, int max_len)
             }
 
             SET_TC_ALL(vertex_cur, tpage, clut);
-            if (projected) SetPolygonGeometry(geometry, nVertices, isTextured);
+            if (projected) SetPolygonGeometry(geometry, nVertices, isTextured, tpage);
             Draw_EnqueueBuffer(nVertices, nIndices);
         }
         else
@@ -2092,7 +2166,21 @@ static bool IsFullWidthBand(const u_long* packets, int length) {
 
 int Draw_PushPrim(u_long* packets, int max_len) {
     const MgsHiResFontSnapshot* codec_text = MgsHiResFontTakeSprite(packets);
-    if (codec_text && DrawCodecFontSprite(codec_text, packets, max_len)) return 4;
+    if (codec_text && DrawCodecFontSprite(codec_text, packets, max_len, &codec_atlas)) return 4;
+    unsigned short interface_fore = 0;
+    unsigned interface_uv_clut = 0;
+    unsigned interface_code = MgsHiResFontTakeInterfaceGlyph(packets, &interface_fore, &interface_uv_clut);
+    if (interface_code && max_len >= 4 && packets[2] == interface_uv_clut && (packets[0] >> 24) == 0x64 &&
+        (packets[3] & 0xffff) == 8 && (packets[3] >> 16) == 6) {
+        MgsHiResFontSnapshot text = {0};
+        text.x = (short)(packets[1] & 0xffff);
+        text.y = (short)(packets[1] >> 16);
+        text.width = 8; text.height = 6; text.count = 1;
+        text.palette[3] = interface_fore;
+        text.glyphs[0].code = (unsigned char)interface_code;
+        text.glyphs[0].width = 8;
+        if (DrawCodecFontSprite(&text, packets, max_len, &interface_atlas)) return 4;
+    }
     bool fill = IsFullWidthBand(packets, max_len);
     if (fill) {
         Draw_FlushBuffer();
@@ -2205,6 +2293,8 @@ void Draw_ClearImage(PS1_RECT* rect, u_char r, u_char g, u_char b) {
 static bool PrepareImageUpload(PS1_RECT* rect, const u16* source, u8* output) {
     size_t pixels = (size_t)rect->w * rect->h;
     ConvertRgb5551ToRgba8888(source, output, pixels);
+    if (!preserve_masked && !force_mask_bit)
+        return true;
     u8* previous = NULL;
     if (preserve_masked) {
         previous = malloc(pixels * 4);
@@ -2401,6 +2491,7 @@ void Draw_ResetBuffer(void) {
     index_cur = index_buf;
     batch_has_texture = false;
     batch_reads_destination = false;
+    batch_samples_framebuffer = false;
 }
 
 static SDL_Rect ScaledBatchBounds(void) {
@@ -2428,7 +2519,7 @@ void Draw_FlushBuffer(void) {
         return;
     }
     const bool scaled_snapshot = internal_res > 1 &&
-                                 (framebuffer_sampling || batch_reads_destination);
+                                 (framebuffer_sampling || batch_samples_framebuffer || batch_reads_destination);
     if (scaled_snapshot) EnsureScaledSnapshot();
     if (BatchReadsPendingNative()) ResolveNativeVram();
     SDL_GPUCommandBuffer* cmd = AcquireCmd();
@@ -2533,7 +2624,7 @@ void Draw_FlushBuffer(void) {
         float scale;
         Uint32 framebuffer;
     } fragment_ubo = {force_mask_bit, preserve_masked, (float)internal_res,
-                     framebuffer_sampling | (texture_screen_aligned << 1) |
+                     (framebuffer_sampling || batch_samples_framebuffer) | (texture_screen_aligned << 1) |
                      (scaled_snapshot << 2)};
     SDL_PushGPUFragmentUniformData(cmd, 0, &fragment_ubo, sizeof(fragment_ubo));
     SDL_BindGPUGraphicsPipeline(pass, batch_depth_mode == 1 ? pipe_depth_write :
@@ -2557,12 +2648,5 @@ void Draw_FlushBuffer(void) {
      * faces. At high scale that becomes gigabytes of copy work in one GPU
      * submission. Split only between complete batches, preserving every read
      * and write in order while bounding outstanding feedback work. */
-    unsigned long long feedback_pixels = gpu_work.resolve_pixels +
-        gpu_work.snapshot_pixels + gpu_work.native_copy_pixels;
-    if (feedback_pixels >= GPU_FEEDBACK_PIXEL_BUDGET) {
-        if (gpu_feedback_yields++ == 0)
-            INFOF("splitting GPU feedback workload after %llu pixels (%llu draws, %llu resolves)",
-                  feedback_pixels, gpu_work.draws, gpu_work.resolves);
-        SubmitCmdAndWait();
-    }
+    YieldGpuWorkIfNeeded();
 }

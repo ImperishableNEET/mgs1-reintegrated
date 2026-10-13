@@ -4,6 +4,40 @@
 #include <stdint.h>
 #include <string.h>
 
+void MgsSightExpandEdgeMask(void *packet, size_t size, int half_width, int blend_mode)
+{
+    POLY_F4 *mask = packet;
+    short *x[4];
+    short y[4];
+    int edge, i, j, vertical;
+    if (half_width <= 160 || half_width > 16383 || size < sizeof(*mask))
+        return;
+    /* Retail sight masks are black wedges. Extend only their vertical outer
+       edge; the other vertices describe the circular aperture. */
+    if (getlen(mask) != 5 ||
+        !((mask->code == 0x28 && !mask->r0 && !mask->g0 && !mask->b0) ||
+          (mask->code == 0x2a && blend_mode == 2 &&
+           mask->r0 == 255 && mask->g0 == 255 && mask->b0 == 255)))
+        return;
+    x[0] = &mask->x0; x[1] = &mask->x1;
+    x[2] = &mask->x2; x[3] = &mask->x3;
+    y[0] = mask->y0; y[1] = mask->y1;
+    y[2] = mask->y2; y[3] = mask->y3;
+    /* SGT assets use both strip and perimeter vertex ordering. */
+    for (edge = 0; edge <= 320; edge += 320)
+    {
+        vertical = 0;
+        for (i = 0; i < 4; ++i)
+            for (j = i + 1; j < 4; ++j)
+                if (*x[i] == edge && *x[j] == edge && y[i] != y[j])
+                    vertical = 1;
+        if (vertical)
+            for (i = 0; i < 4; ++i)
+                if (*x[i] == edge)
+                    *x[i] = edge == 0 ? 160 - half_width : 160 + half_width;
+    }
+}
+
 size_t MgsSightCopyPacket(void *destination, size_t capacity,
                          const void *source, size_t available)
 {

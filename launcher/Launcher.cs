@@ -16,6 +16,7 @@ namespace ReIntegral
         private readonly ComboBox resolution = new ComboBox(), mantis = new ComboBox();
         private readonly CheckBox wide = new CheckBox(), fullscreen = new CheckBox(), scanlines = new CheckBox(), codecTurbo = new CheckBox(), missionLogFast = new CheckBox(), firstPersonMoveShoot = new CheckBox(), sharpCodecFont = new CheckBox();
         private readonly CheckBox textureCorrection = new CheckBox();
+        private readonly CheckBox originalResolution = new CheckBox();
         private readonly CheckBox geometryPrecision = new CheckBox(), depthBuffer = new CheckBox();
         private readonly CheckBox bonus = new CheckBox(), invulnerable = new CheckBox();
         private readonly CheckBox autoCard = new CheckBox(), overlay = new CheckBox();
@@ -144,14 +145,16 @@ namespace ReIntegral
             var page = Page("Graphics");
             LabelAt(page, BuildInfo.ModernRenderer ? "Modern renderer — experimental enhancements" :
                 "These enhancements require the experimental modern renderer build.", 18);
-            CheckAt(page, textureCorrection, "Perspective-correct textures", 64);
-            CheckAt(page, geometryPrecision, "Subpixel geometry (reduce polygon jitter)", 104);
-            CheckAt(page, depthBuffer, "Depth buffer (per-pixel surface visibility)", 144);
+            CheckAt(page, originalResolution, "Original-resolution gameplay (lower GPU use)", 52);
+            originalResolution.Enabled = BuildInfo.ModernRenderer;
+            CheckAt(page, textureCorrection, "Perspective-correct textures", 92);
+            CheckAt(page, geometryPrecision, "Subpixel geometry (reduce polygon jitter)", 132);
+            CheckAt(page, depthBuffer, "Depth buffer (per-pixel surface visibility)", 172);
             LabelAt(page, "Applies to projected models. Screen effects keep their original rendering.", 206);
             LabelAt(page, "Depth testing may change overlapping surfaces; compare with it off.", 242);
             CheckAt(page, scanlines, "Scanlines (optional display effect)", 278);
-            CheckAt(page, sharpCodecFont, "Sharp English text (Heros prototype)", 318);
-            LabelAt(page, "Codec, subtitles and location names. More GPU memory while text is visible.", 356);
+            CheckAt(page, sharpCodecFont, "Sharp English text and interface lettering", 318);
+            LabelAt(page, "Codec, subtitles, location names and menus. Uses the bundled font atlases.", 356);
         }
 
         private static void CheckAt(Control parent, CheckBox field, string text, int y)
@@ -240,6 +243,7 @@ namespace ReIntegral
             wide.Checked = value.Widescreen; resolution.Text = value.Resolution;
             fullscreen.Checked = value.Fullscreen; scanlines.Checked = value.Scanlines; codecTurbo.Checked = value.CodecTurbo; missionLogFast.Checked = value.MissionLogFast; firstPersonMoveShoot.Checked = value.FirstPersonMoveShoot; sharpCodecFont.Checked = value.SharpCodecFont; bonus.Checked = value.BonusItems;
             textureCorrection.Checked = value.TextureCorrection;
+            originalResolution.Checked = value.OriginalResolution || !BuildInfo.ModernRenderer;
             geometryPrecision.Checked = value.GeometryPrecision;
             depthBuffer.Checked = value.DepthBuffer;
             invulnerable.Checked = value.Invulnerable; autoCard.Checked = value.AutoCard;
@@ -255,6 +259,7 @@ namespace ReIntegral
                 Resolution = resolution.Text.Trim(), Widescreen = wide.Checked, Fullscreen = fullscreen.Checked,
                 Scanlines = scanlines.Checked, CodecTurbo = codecTurbo.Checked, MissionLogFast = missionLogFast.Checked, FirstPersonMoveShoot = firstPersonMoveShoot.Checked, SharpCodecFont = sharpCodecFont.Checked,
                 TextureCorrection = textureCorrection.Checked,
+                OriginalResolution = originalResolution.Checked,
                 GeometryPrecision = geometryPrecision.Checked, DepthBuffer = depthBuffer.Checked,
                 BonusItems = bonus.Checked, Invulnerable = invulnerable.Checked, AutoCard = autoCard.Checked,
                 FastLoading = fastLoading.Checked,
@@ -321,7 +326,8 @@ namespace ReIntegral
             log.WriteLine(activeArguments);
             var startInfo = GameLaunch.StartInfo(executable, activeArguments, dataDirectory);
             startInfo.EnvironmentVariables["REI_ENGLISH_CAPTIONS"] = "1";
-            startInfo.EnvironmentVariables["REI_ORIGINAL_RES"] = "1";
+            startInfo.EnvironmentVariables["REI_ORIGINAL_RES"] =
+                originalResolution.Checked || !BuildInfo.ModernRenderer ? "1" : "0";
             startInfo.EnvironmentVariables["REI_REINTEGRATED_TITLE"] = "1";
             startInfo.EnvironmentVariables["REI_SCANLINES"] = scanlines.Checked ? "1" : "0";
             startInfo.EnvironmentVariables["REI_CODEC_TURBO"] = codecTurbo.Checked ? "1" : "0";
@@ -329,6 +335,10 @@ namespace ReIntegral
             startInfo.EnvironmentVariables["REI_FIRST_PERSON_MOVE_SHOOT"] = GameLaunch.FirstPersonMoveShootEnvironment(firstPersonMoveShoot.Checked);
             if (atlas != null) startInfo.EnvironmentVariables["REI_CODEC_FONT_ATLAS"] = atlas;
             else startInfo.EnvironmentVariables.Remove("REI_CODEC_FONT_ATLAS");
+            string interfaceAtlas = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fonts", "interface-font.bmp");
+            if (atlas != null && File.Exists(interfaceAtlas))
+                startInfo.EnvironmentVariables["REI_INTERFACE_FONT_ATLAS"] = interfaceAtlas;
+            else startInfo.EnvironmentVariables.Remove("REI_INTERFACE_FONT_ATLAS");
             game = new Process { StartInfo = startInfo };
             game.OutputDataReceived += WriteLog;
             game.ErrorDataReceived += WriteLog;

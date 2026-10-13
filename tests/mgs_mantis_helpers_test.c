@@ -11,6 +11,8 @@
 SVECTOR DG_ZeroVector;
 DG_CHANL DG_Chanls[3];
 int GV_Time;
+static int hideo_half_width = 160;
+int MgsVideoHalfWidth(void) { return hideo_half_width; }
 short linkvarbuf[96];
 int MgsMantisMemoryInstalledEnabled(void) { return 0; }
 #include "mantis_helpers.inc"
@@ -146,6 +148,37 @@ static void TestHideoChannel(void)
         s07b_800CC174(&work, 255);
         assert(getaddr(&tables[2][bank]) == (u_long)&work.white[bank]);
     }
+    /* All authored blackout frames, both packet banks, languages and repeat
+     * lengths. A fresh OT per frame also checks that flashes never submit text. */
+    const int widths[] = {160, 214, 285};
+    for (unsigned w = 0; w < sizeof(widths) / sizeof(widths[0]); ++w)
+        for (int japanese = 0; japanese < 2; ++japanese)
+            for (int repeat = 0; repeat < 2; ++repeat)
+                for (int bank = 0; bank < 2; ++bank)
+                    for (int time = 0; time < (repeat ? 128 : 256); ++time) {
+                        memset(tables, 0, sizeof(tables));
+                        hideo_half_width = widths[w];
+                        GM_Configuration = japanese ? 0x100 : 0;
+                        work.field_a58 = repeat;
+                        GV_Time = bank;
+                        s07b_800CC174(&work, time);
+                        int offset = widths[w] - 160;
+                        int last = repeat ? 127 : 255;
+                        if (time == 0 || time == last)
+                            assert(getaddr(&tables[2][bank]) == (u_long)&work.white[bank]);
+                        else {
+                            assert(getaddr(&tables[2][bank]) == (u_long)&work.black[bank]);
+                            POLY_FT4 *label = japanese ? (time < 64 ? &work.hideo_big[bank] : &work.hideo_small[bank]) : &work.hideo[bank];
+                            assert(getaddr(&work.black[bank]) == (u_long)label);
+                            assert(label->x1 == (japanese ? 312 : 296) + offset);
+                            assert(label->x0 == (japanese ? (time < 64 ? 192 : 252) : (time < 64 ? 224 : 260)) + offset);
+                            assert(label->y0 == 8);
+                            assert(label->y2 == (japanese ? (time < 64 ? 36 : 22) : (time < 64 ? 40 : 24)));
+                        }
+                        assert(!getaddr(&tables[0][bank]) && !getaddr(&tables[1][bank]));
+                    }
+    hideo_half_width = 160;
+    GM_Configuration = 0;
 }
 
 static void TestMemoryProfile(void)

@@ -1,15 +1,16 @@
 --- a/psyz/src/platform/sdl3_common.h
 +++ b/psyz/src/platform/sdl3_common.h
-@@ -583,6 +583,8 @@
+@@ -583,6 +583,9 @@
      return 0;
  }
  
 +#include "gamepad_slots.h"
++#include "gamepad_usb_location.h"
 +
  struct Gamepad {
      SDL_JoystickID id;
      SDL_Gamepad* dev;
-@@ -590,9 +592,15 @@
+@@ -590,9 +593,15 @@
  };
  static bool is_pads_init = false;
  static struct Gamepad gamepads[16] = {0};
@@ -26,7 +27,7 @@
      if (port < 0 || port >= 2 || !gamepads[port].dev) {
          return 0;
      }
-@@ -605,7 +613,7 @@
+@@ -605,7 +614,7 @@
      if (!Psyz_PadsSupportsRumble(port)) {
          return 0;
      }
@@ -35,7 +36,7 @@
      return SDL_RumbleGamepad(gamepads[port].dev, low, high, duration_ms);
  }
  
-@@ -613,6 +621,23 @@
+@@ -613,6 +622,23 @@
  #ifdef PLATFORM_IOS
      Psyz_IosSetTouchControlsVisible(is_pads_init && !gamepads[0].dev);
  #endif
@@ -59,7 +60,7 @@
  }
  
  static void AddGamepad(SDL_JoystickID id) {
-@@ -622,25 +647,38 @@
+@@ -622,25 +648,47 @@
              return;
          }
      }
@@ -80,9 +81,11 @@
      }
 +    const char *serial = SDL_GetGamepadSerial(dev);
 +    int family = GamepadPhysicalFamily(dev);
++    char usb_socket[512];
++    PsyzGamepadUsbLocation(SDL_GetGamepadPath(dev), usb_socket, sizeof(usb_socket));
 +    int identity_ports = SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false);
 +    i = PsyzGamepadChooseSlot(gamepad_slots, LEN(gamepad_slots), serial,
-+        family, identity_ports);
++        family, usb_socket, identity_ports);
 +    if (i < 0) {
 +        if (i == -2) WARNF("ignored duplicate gamepad identity");
 +        else ERRORF("too many gamepads connected");
@@ -90,7 +93,11 @@
 +        return;
 +    }
 +    const char *reason = "first available port";
-+    if (identity_ports && PsyzGamepadHasSerial(serial) &&
++    if (identity_ports && i == 1 && PsyzGamepadHasSerial(serial) &&
++        !strcmp(gamepad_slots[0].serial, serial) && gamepad_slots[0].usb_socket[0] &&
++        usb_socket[0] && strcmp(gamepad_slots[0].usb_socket, usb_socket))
++        reason = "same controller, different USB socket";
++    else if (identity_ports && PsyzGamepadHasSerial(serial) &&
 +        !strcmp(gamepad_slots[i].serial, serial)) reason = "remembered serial";
 +    else if (identity_ports && i == 1 && !gamepad_slots[0].connected &&
 +             family && gamepad_slots[0].family && family != gamepad_slots[0].family)
@@ -99,17 +106,20 @@
 +        reason = "original physical family";
 +    else if (identity_ports && i == 1 && !gamepad_slots[0].connected)
 +        reason = "different serial";
-+    PsyzGamepadRememberSlot(&gamepad_slots[i], serial, family);
++    PsyzGamepadRememberSlot(&gamepad_slots[i], serial, family, usb_socket);
      gamepads[i].id = id;
      gamepads[i].dev = dev;
      gamepads[i].name = SDL_GetGamepadName(dev);
 -    INFOF("connected %s", gamepads[i].name);
 +    INFOF("connected %s: controller port %d (%s)", gamepads[i].name,
 +          Psyz_PadsHostPort(i) + 1, reason);
++    INFOF("controller identity evidence: serial=%s, physical USB socket=%s",
++          PsyzGamepadHasSerial(serial) ? "available" : "unavailable",
++          usb_socket[0] ? "available" : "unavailable");
      UpdatePlatformTouchControls();
  }
  
-@@ -657,10 +695,19 @@
+@@ -657,10 +705,19 @@
      }
  
      SDL_CloseGamepad(gamepads[i].dev);
@@ -133,7 +143,7 @@
      UpdatePlatformTouchControls();
  }
  
-@@ -805,7 +852,7 @@
+@@ -805,7 +862,7 @@
  #ifdef PSYZ_GODOT_REMOTE
      if (id == 0) pressed |= MgsGodotButtons();
  #endif
@@ -142,7 +152,7 @@
  }
  
  static unsigned char AxisToByte(short v) {
-@@ -823,7 +870,7 @@
+@@ -823,7 +880,7 @@
      if (port < 0 || port >= LEN(gamepads)) {
          return false;
      }
@@ -151,7 +161,7 @@
          return true;
      }
      if (port == 0 && SDL_HasKeyboard()) {
-@@ -865,8 +912,9 @@
+@@ -865,8 +922,9 @@
              break;
          }
          unsigned char rx = 0x80, ry = 0x80, lx = 0x80, ly = 0x80;
@@ -163,7 +173,7 @@
              rx = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_RIGHTX));
              ry = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_RIGHTY));
              lx = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_LEFTX));
-@@ -978,6 +1026,21 @@
+@@ -978,6 +1036,21 @@
  #endif
  
  static void PollEvents(void) {
@@ -187,7 +197,7 @@
      // sending global keyboard input or choosing a display mode.
 --- /dev/null
 +++ b/psyz/src/platform/gamepad_slots.h
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,70 @@
 +#ifndef PSYZ_GAMEPAD_SLOTS_H
 +#define PSYZ_GAMEPAD_SLOTS_H
 +#include <string.h>
@@ -195,6 +205,7 @@
 +typedef struct PsyzGamepadSlot {
 +    int connected;
 +    char serial[128];
++    char usb_socket[512];
 +    int family; /* Stable physical family, never a transport GUID or USB port. */
 +} PsyzGamepadSlot;
 +
@@ -203,7 +214,7 @@
 +}
 +
 +static int PsyzGamepadChooseSlot(const PsyzGamepadSlot *slots, int count,
-+                                 const char *serial, int family, int allow_replacement_port2) {
++                                 const char *serial, int family, const char *usb_socket, int allow_replacement_port2) {
 +    int known = allow_replacement_port2 && PsyzGamepadHasSerial(serial);
 +    /* Instance IDs change after reconnect; only an available device serial
 +     * can restore a remembered identity. Never compare a model GUID. */
@@ -211,6 +222,12 @@
 +        for (int i = 0; i < count; ++i)
 +            if (slots[i].connected && !strcmp(slots[i].serial, serial))
 +                return -2; /* Duplicate identity may be a virtual alias. */
++        /* Same verified device moved to a different physical USB socket.
++         * Preserve the original slot's socket so moving back restores port 1. */
++        if (count >= 2 && !slots[0].connected && !slots[1].connected &&
++            !strcmp(slots[0].serial, serial) && slots[0].usb_socket[0] &&
++            usb_socket && usb_socket[0])
++            return strcmp(slots[0].usb_socket, usb_socket) ? 1 : 0;
 +        for (int i = 0; i < count; ++i)
 +            if (!slots[i].connected && slots[i].serial[0] &&
 +                !strcmp(slots[i].serial, serial)) return i;
@@ -241,10 +258,118 @@
 +    return port;
 +}
 +
-+static void PsyzGamepadRememberSlot(PsyzGamepadSlot *slot, const char *serial, int family) {
++static void PsyzGamepadRememberSlot(PsyzGamepadSlot *slot, const char *serial, int family, const char *usb_socket) {
 +    slot->connected = 1;
 +    slot->family = family;
++    slot->usb_socket[0] = 0;
++    if (usb_socket && strlen(usb_socket) < sizeof(slot->usb_socket))
++        memcpy(slot->usb_socket, usb_socket, strlen(usb_socket) + 1);
 +    slot->serial[0] = 0;
 +    if (PsyzGamepadHasSerial(serial)) memcpy(slot->serial, serial, strlen(serial) + 1);
 +}
++#endif
+--- /dev/null
++++ b/psyz/src/platform/gamepad_usb_location.h
+@@ -0,0 +1,102 @@
++/* Read-only Windows USB topology evidence. No instance ID or GUID is used
++ * as a socket identity. Unsupported backends deliberately return no evidence. */
++#ifndef PSYZ_GAMEPAD_USB_LOCATION_H
++#define PSYZ_GAMEPAD_USB_LOCATION_H
++#if defined(_WIN32)
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <windows.h>
++#include <cfgmgr32.h>
++#include <wchar.h>
++
++static int PsyzGamepadUsbLocation(const char *path, char *result, size_t capacity) {
++    typedef CONFIGRET (WINAPI *InterfacePropertyFn)(LPCWSTR, const DEVPROPKEY *, DEVPROPTYPE *, PBYTE, PULONG, ULONG);
++    typedef CONFIGRET (WINAPI *LocateFn)(PDEVINST, DEVINSTID_W, ULONG);
++    typedef CONFIGRET (WINAPI *ParentFn)(PDEVINST, DEVINST, ULONG);
++    typedef CONFIGRET (WINAPI *IdFn)(DEVINST, PWSTR, ULONG, ULONG);
++    typedef CONFIGRET (WINAPI *PropertyFn)(DEVINST, const DEVPROPKEY *, DEVPROPTYPE *, PBYTE, PULONG, ULONG);
++    static const DEVPROPKEY instance_key = {{0x78c34fc8,0x104a,0x4aca,{0x9e,0xa4,0x52,0x4d,0x52,0x99,0x6e,0x57}},256};
++    static const DEVPROPKEY location_key = {{0xa45c254e,0xdf1c,0x4efd,{0x80,0x20,0x67,0xd1,0x46,0xa8,0x50,0xe0}},37};
++    result[0] = 0;
++    if (!path || strncmp(path, "\\\\?\\", 4)) return 0;
++    /* Load only the Windows system library; do not search the working folder. */
++    HMODULE library = LoadLibraryExW(L"cfgmgr32.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
++    if (!library) return 0;
++    InterfacePropertyFn interface_property = (InterfacePropertyFn)GetProcAddress(library, "CM_Get_Device_Interface_PropertyW");
++    LocateFn locate = (LocateFn)GetProcAddress(library, "CM_Locate_DevNodeW");
++    ParentFn parent = (ParentFn)GetProcAddress(library, "CM_Get_Parent");
++    IdFn get_id = (IdFn)GetProcAddress(library, "CM_Get_Device_IDW");
++    PropertyFn property = (PropertyFn)GetProcAddress(library, "CM_Get_DevNode_PropertyW");
++    int ok = 0;
++    WCHAR interface_path[1024], id[512], locations[1024];
++    DEVPROPTYPE type;
++    ULONG bytes = sizeof(id);
++    DEVINST node;
++    if (!interface_property || !locate || !parent || !get_id || !property ||
++        !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, interface_path, 1024)) goto done;
++    memset(id, 0, sizeof(id));
++    if (interface_property(interface_path, &instance_key, &type, (PBYTE)id, &bytes, 0) != CR_SUCCESS ||
++        type != DEVPROP_TYPE_STRING || bytes > sizeof(id) || id[511] ||
++        locate(&node, id, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS) goto done;
++    for (int level = 0; level < 16; ++level) {
++        memset(id, 0, sizeof(id));
++        if (get_id(node, id, 512, 0) != CR_SUCCESS) break;
++        /* Never mistake a Bluetooth radio's USB socket for the controller. */
++        if (!_wcsnicmp(id, L"BTH", 3)) break;
++        if (!_wcsnicmp(id, L"USB\\VID_", 8) && !wcsstr(id, L"&MI_")) {
++            bytes = sizeof(locations);
++            memset(locations, 0, sizeof(locations));
++            if (property(node, &location_key, &type, (PBYTE)locations, &bytes, 0) != CR_SUCCESS ||
++                type != DEVPROP_TYPE_STRING_LIST || bytes > sizeof(locations) || bytes < 4 ||
++                locations[1023]) break;
++            /* Windows may supply both PCI and ACPI aliases. Select the unique
++             * PCI/USBROOT path, independent of MULTI_SZ ordering. */
++            const WCHAR *chosen = NULL;
++            size_t limit = bytes / sizeof(WCHAR), offset = 0;
++            while (offset < limit && locations[offset]) {
++                const WCHAR *value = locations + offset;
++                const WCHAR *end = wmemchr(value, 0, limit - offset);
++                if (!end) goto done;
++                if (!wcsncmp(value, L"PCIROOT(", 8) && wcsstr(value, L"#USBROOT(")) {
++                    if (chosen && wcscmp(chosen, value)) goto done;
++                    chosen = value;
++                }
++                offset += (size_t)(end - value) + 1;
++            }
++            if (offset >= limit || !chosen) break;
++            size_t length = wcslen(chosen);
++            if (length >= capacity) break;
++            for (size_t i = 0; i <= length; ++i) {
++                if (chosen[i] > 127) goto done;
++                result[i] = (char)chosen[i];
++            }
++            /* A wired topology must terminate at a physical USB port. */
++            const char *usb = strstr(result, "#USB(");
++            if (!strstr(result, "#USBROOT(") || !usb) goto done;
++            while (usb) {
++                const char *n = usb + 5;
++                if (*n < '0' || *n > '9') goto done;
++                while (*n >= '0' && *n <= '9') ++n;
++                if (*n++ != ')') goto done;
++                if (!*n) { ok = 1; break; }
++                if (strncmp(n, "#USB(", 5)) goto done;
++                usb = n;
++            }
++            break;
++        }
++        DEVINST next;
++        if (parent(&next, node, 0) != CR_SUCCESS) break;
++        node = next;
++    }
++done:
++    FreeLibrary(library);
++    if (!ok) result[0] = 0;
++    return ok;
++}
++#else
++static int PsyzGamepadUsbLocation(const char *path, char *result, size_t capacity) {
++    (void)path; (void)capacity; result[0] = 0; return 0;
++}
++#endif
 +#endif

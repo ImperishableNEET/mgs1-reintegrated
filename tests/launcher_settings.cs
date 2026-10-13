@@ -44,6 +44,7 @@ internal static class LauncherSettingsTest
         Require(value.MantisMemory == "installed", "New launcher profiles must use installed-game memory reading");
         Require(GameLaunch.Arguments(value).Contains("--mantis-memory installed"), "Installed mode was not passed to the engine");
         Require(!value.Scanlines, "Optional scanlines must default off");
+        Require(!value.OriginalResolution, "Display-resolution rendering must default on");
         Require(value.Resolution == "640x480" && !value.Widescreen,
             "New profiles must default to the original display format");
         Require(!value.TextureCorrection && !value.GeometryPrecision && !value.DepthBuffer,
@@ -63,6 +64,7 @@ internal static class LauncherSettingsTest
         value.FastLoading = true;
         value.FirstPersonMoveShoot = true;
         value.TextureCorrection = value.GeometryPrecision = value.DepthBuffer = true;
+        value.OriginalResolution = true;
         value.Save(path);
         var restored = Settings.Load(path);
         Require(restored.MantisMemory == "off" && !GameLaunch.Arguments(restored).Contains("--mantis-memory"),
@@ -72,6 +74,7 @@ internal static class LauncherSettingsTest
             "Settings round-trip or replacement failed");
         Require(restored.TextureCorrection && restored.GeometryPrecision && restored.DepthBuffer,
             "Graphics settings did not round-trip");
+        Require(restored.OriginalResolution, "Explicit original-resolution preference did not persist");
         Require(!restored.CodecTurbo, "Codec turbo opt-out did not persist");
         Require(!restored.MissionLogFast, "Mission-log opt-out did not persist");
         Require(restored.FastLoading, "Fast loading setting did not round-trip");
@@ -83,6 +86,10 @@ internal static class LauncherSettingsTest
         Require(languages.Contains("--text-pack " + GameLaunch.Quote(value.TextPack)) &&
             languages.Contains("--voice-pack " + GameLaunch.Quote(value.VoicePack)), "Language paths were not quoted");
         Require(Directory.GetFiles(directory, "*.tmp").Length == 0, "Temporary settings file leaked");
+        File.WriteAllText(path, "<Settings><Version>1</Version><SharpCodecFont>true</SharpCodecFont></Settings>");
+        var legacy = Settings.Load(path);
+        Require(legacy.SharpCodecFont && !legacy.OriginalResolution,
+            "Older profiles must keep sharp text and adopt display-resolution rendering");
         File.WriteAllText(path, "<Settings><Version>99</Version></Settings>");
         try { Settings.Load(path); throw new InvalidOperationException("Unknown settings version accepted"); }
         catch (InvalidDataException) { }

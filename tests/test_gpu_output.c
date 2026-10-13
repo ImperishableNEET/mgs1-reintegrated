@@ -1,8 +1,12 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 #include <libgpu.h>
 #include <psyz.h>
+
+int ReiReintegratedTitleVisible;
 
 static void submit(void *primitive) {
     termPrim((P_TAG *)primitive);
@@ -45,6 +49,35 @@ static void check_capture(void) {
     free(image);
 }
 
+static void check_native_capture_dump(void) {
+    enum { width = 320, height = 240 };
+    uint16_t *source = malloc(width * height * sizeof(*source));
+    assert(source);
+    for (unsigned i = 0; i < width * height; ++i)
+        source[i] = (uint16_t)((i & 0x7fff) | ((i & 1) << 15));
+    RECT region = {0, 0, width, height};
+    LoadImage(&region, (u_long *)source);
+    DrawSync(0);
+    int w, h, dump_w, dump_h;
+    unsigned char *frame = Psyz_VideoAllocCapturedFrame(&w, &h);
+    unsigned char *dump = Psyz_VideoAllocVramDump(&dump_w, &dump_h);
+    assert(frame && dump && w == width && h == height && dump_w == 1024 && dump_h == 512);
+    for (int y = 0; y < height; ++y) {
+        assert(!memcmp(frame + y * width * 3, dump + y * dump_w * 3, width * 3));
+        for (int x = 0; x < width; ++x) {
+            unsigned index = (unsigned)y * width + x;
+            for (unsigned c = 0; c < 3; ++c) {
+                unsigned value = (source[index] >> (c * 5)) & 31;
+                assert(frame[index * 3 + c] == (value * 255 + 15) / 31);
+            }
+        }
+    }
+    free(dump);
+    free(frame);
+    free(source);
+    puts("Native RGB capture: all RGB555 colors, mask-bit removal and VRAM row-stride parity passed.");
+}
+
 static void check_movie_capture(void) {
     TILE white = {0};
     clear_frame(0);
@@ -79,6 +112,28 @@ static void check_display_blanking(void) {
     free(image);
 }
 
+static void check_odd_output_pitch(void) {
+    const int sizes[][2] = {{321, 239}, {323, 241}, {641, 479}};
+    for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i) {
+        assert(Psyz_VideoConfigureWindow(sizes[i][0], sizes[i][1], 0) == 0);
+        int width, height;
+        unsigned char *image = Psyz_VideoAllocPresentedFrame(&width, &height);
+        assert(image && width == sizes[i][0] && height == sizes[i][1]);
+        /* The preceding 4:3 movie is white; each odd-width packed row must
+         * retain its white centre and narrow black side border independently. */
+        for (int y = 0; y < height; ++y) {
+            const unsigned char *row = image + (size_t)y * width * 3;
+            for (int c = 0; c < 3; ++c) {
+                assert(row[c] == 0);
+                assert(row[(width / 2) * 3 + c] == 255);
+                assert(row[(width - 1) * 3 + c] == 0);
+            }
+        }
+        free(image);
+    }
+    puts("Presented RGB capture: tightly packed 321/323/641-pixel row pitches passed.");
+}
+
 int main(void) {
     _set_error_mode(_OUT_TO_STDERR);
     assert(Psyz_VideoConfigureWindow(0, 1440, 0) < 0);
@@ -100,8 +155,10 @@ int main(void) {
     DrawSync(0);
     assert(Psyz_VideoGetInternalResolution() == 8);
     check_capture();
+    check_native_capture_dump();
     check_movie_capture();
     check_display_blanking();
+    check_odd_output_pitch();
     puts("Output 2560x1440: 8x capture retains subpixel geometry, "
          "native capture unchanged, 4:3 movie pillarboxed");
     return 0;

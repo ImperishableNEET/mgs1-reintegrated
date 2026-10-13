@@ -31,6 +31,15 @@ foreach ($fontFile in @('texgyreheros_regular_ascii8x_coverage.bmp', 'GUST-FONT-
     Copy-Item -LiteralPath (Join-Path $FontDirectory $fontFile) -Destination $fontOutput
 }
 Copy-Item -LiteralPath (Join-Path $project 'licenses/Heros-atlas-notice.txt') -Destination (Join-Path $fontOutput 'README.txt')
+$interfaceAtlas = Join-Path $FontDirectory 'interface-font.bmp'
+if (Test-Path -LiteralPath $interfaceAtlas) {
+    Copy-Item -LiteralPath $interfaceAtlas -Destination $fontOutput
+    Copy-Item -LiteralPath (Join-Path $FontDirectory 'interface-font.json') -Destination $fontOutput
+    Copy-Item -LiteralPath (Join-Path $project 'assets/fonts/mgs1-codec-gleeson.ttf') -Destination $fontOutput
+    foreach ($notice in @('Gleeson-atlas-notice.txt', 'Gleeson-fonts-CC-BY-SA-4.0.txt')) {
+        Copy-Item -LiteralPath (Join-Path $project "licenses/$notice") -Destination $fontOutput
+    }
+}
 if (Get-ChildItem -LiteralPath $package -Recurse -File | Where-Object { $_.Extension -in @('.mgslang', '.bin', '.cue', '.iso', '.dat', '.dir', '.mcr', '.mcd', '.sav') }) {
     throw 'Retail resource files must not be included in a player package.'
 }
