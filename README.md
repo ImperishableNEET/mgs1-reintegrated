@@ -29,9 +29,9 @@ the release notes for verification limits.
 
 ## Build and play
 
-![Reintegrated title screen with optional scanlines](assets/screenshots/title-screen.jpg)
+![Reintegrated widescreen title screen with optional scanlines](assets/screenshots/title-screen-widescreen.png)
 
-Title-screen capture from our Windows candidate with optional scanlines enabled.
+Widescreen title-screen capture from the Windows candidate with optional scanlines enabled.
 
 Use PowerShell 7, Python 3.11+, Git, and Visual Studio C++/Clang x86 tools plus a
 Windows SDK. See [upstream setup details](docs/UPSTREAM_README.md#build).
