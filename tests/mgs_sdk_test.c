@@ -3,6 +3,7 @@
 #include "game/game.h"
 #include "mgs_controller_ports.h"
 #include "mgs_ending_debug.h"
+#include "mgs_mantis_device.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,6 +19,8 @@ static int rumble_calls;
 static int replaying;
 int GM_PlayerStatus;
 int GM_GameOverTimer;
+int GM_GameStatus;
+int GV_PauseLevel;
 int ReiReintegratedTitleVisible;
 static char test_area[8];
 char *GM_GetArea(int flag) { (void)flag; return test_area; }
@@ -102,7 +105,7 @@ static void TestPortSwap(void)
     SetTestArea("s07b");
     GM_PlayerStatus = PLAYER_SECOND_AVAILABLE;
     MgsControllerPortsUpdate();
-    assert(SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
+    assert(!SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
     assert(!*MgsControllerPortsHint());
     for (int i = 0; i < 2; ++i) {
         GM_GameOverTimer = -2; /* Meryl's suspended scene is not a death. */
@@ -134,7 +137,7 @@ static void TestPortSwap(void)
     MgsControllerPortsUpdate();
     /* Other scripts can enable the second controller; routing follows the
      * recovered availability flag even when Mantis's UI hint is hidden. */
-    assert(SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
+    assert(!SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
     assert(strstr(MgsControllerPortsHint(), "RETURN TO PORT 1"));
     PressPortKey(1);
     assert(Psyz_PadsHostPort(0) == 1);
@@ -226,6 +229,105 @@ static void TestEndingDebug(SDL_Joystick *controller)
     PressPortKey(0); assert(Psyz_PadsHostPort(0)==port);
     MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE,0);
     SetTestArea("");
+}
+
+static void PushKey(unsigned keyboard, SDL_Scancode key, int down)
+{
+    SDL_Event event = {0}; event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+    event.key.which = keyboard; event.key.scancode = key;
+    assert(SDL_PushEvent(&event)); Psyz_PadsPoll();
+}
+
+static void TestMantisIdentity(void)
+{
+    PsyzInputDeviceInfo base = { .kind = 2, .instance = 3, .family = 1, .wired = 1 };
+    PsyzInputDeviceInfo other = base;
+    strcpy(base.serial, "A"); strcpy(base.usb_socket, "USB1");
+    other = base; other.instance = 9;
+    assert(!MgsMantisDifferentDevice(&base, &other, 0)); /* Same serial, same port. */
+    strcpy(other.usb_socket, "USB2");
+    assert(MgsMantisDifferentDevice(&base, &other, 0));
+    strcpy(other.serial, "B"); assert(MgsMantisDifferentDevice(&base, &other, 0));
+    /* Same controller, Bluetooth to wired (or back): transport is not identity. */
+    other = base; other.instance = 9; other.wired = 0;
+    strcpy(other.usb_socket, "RADIO2"); /* Defensive: receiver location is ignored. */
+    assert(!MgsMantisDifferentDevice(&base, &other, 0));
+    assert(!MgsMantisDifferentDevice(&other, &base, 0));
+    /* A Bluetooth baseline never gains an original socket from later input. */
+    PsyzInputDeviceInfo wireless = other;
+    other.wired = 1; strcpy(other.usb_socket, "USB3");
+    assert(!MgsMantisDifferentDevice(&wireless, &other, 0));
+    assert(!wireless.wired && !strcmp(wireless.usb_socket, "RADIO2"));
+    /* Moving a receiver grants nothing; separate proven controllers do. */
+    other = wireless; other.instance = 12;
+    strcpy(other.usb_socket, "RADIO4");
+    assert(!MgsMantisDifferentDevice(&wireless, &other, 0));
+    strcpy(other.serial, "B");
+    assert(MgsMantisDifferentDevice(&wireless, &other, 0));
+    strcpy(other.usb_socket, wireless.usb_socket);
+    assert(MgsMantisDifferentDevice(&wireless, &other, 0)); /* Shared receiver. */
+    wireless.serial[0] = other.serial[0] = 0;
+    assert(!MgsMantisDifferentDevice(&wireless, &other, 0)); /* Unknown reconnect. */
+    assert(MgsMantisDifferentDevice(&wireless, &other, 1)); /* Concurrent instances. */
+    other = base; other.instance = 9;
+    base.serial[0] = other.serial[0] = 0;
+    other.usb_socket[0] = 0;
+    assert(!MgsMantisDifferentDevice(&base, &other, 0)); /* Unknown reconnect. */
+    assert(MgsMantisDifferentDevice(&base, &other, 1)); /* Two connected devices. */
+    other.kind = 1; assert(MgsMantisDifferentDevice(&base, &other, 0));
+}
+
+static void TestMantisDevices(SDL_Joystick *controllers[2])
+{
+    unsigned char frame[PSYZ_PAD_BUF_LEN];
+    SetTestArea("s08a"); MgsControllerPortsUpdate();
+    Psyz_PadsSetHostPortSwap(0);
+    SetTestArea("s07b"); GM_PlayerStatus = PLAYER_SECOND_AVAILABLE;
+    MgsControllerPortsUpdate();
+    /* First input is pad 2 even though it was attached second. */
+    assert(SDL_SetJoystickVirtualButton(controllers[1], SDL_GAMEPAD_BUTTON_WEST, true));
+    ReadFrame(0, frame);
+    assert(Psyz_PadsHostPort(0) == 0 && (frame[3] & 0x80) == 0);
+    assert(SDL_SetJoystickVirtualButton(controllers[0], SDL_GAMEPAD_BUTTON_SOUTH, true));
+    ReadFrame(1, frame);
+    assert(Psyz_PadsHostPort(0) == 1 && (frame[3] & 0x40) == 0 && (frame[3] & 0x80));
+    /* A held button on the previous device cannot leak into selected input. */
+    PushKey(9001, SDL_SCANCODE_UP, 1);
+    ReadFrame(1, frame);
+    assert(Psyz_PadsHostPort(0) == 1 && frame[3] == 0xff);
+    PushKey(9001, SDL_SCANCODE_UP, 0);
+    assert(SDL_SetJoystickVirtualButton(controllers[1], SDL_GAMEPAD_BUTTON_WEST, false));
+    ReadFrame(1, frame);
+    assert(SDL_SetJoystickVirtualButton(controllers[1], SDL_GAMEPAD_BUTTON_WEST, true));
+    ReadFrame(0, frame); assert(Psyz_PadsHostPort(0) == 0);
+    GV_PauseLevel = 2;
+    PushKey(9001, SDL_SCANCODE_X, 1); assert(Psyz_PadsHostPort(0) == 0);
+    GV_PauseLevel = 0; PushKey(9001, SDL_SCANCODE_X, 0);
+    GM_GameOverTimer = 1; MgsControllerPortsUpdate();
+    assert(Psyz_PadsHostPort(0) == 0);
+    GM_GameOverTimer = 0;
+    PushKey(9001, SDL_SCANCODE_X, 1); assert(Psyz_PadsHostPort(0) == 0);
+    PushKey(9002, SDL_SCANCODE_X, 1); assert(Psyz_PadsHostPort(0) == 1);
+    /* Two keyboards may hold the same key, independently. */
+    PushKey(9002, SDL_SCANCODE_X, 0); ReadFrame(1, frame); assert(frame[3] == 0xff);
+    PushKey(9001, SDL_SCANCODE_UP, 1); assert(Psyz_PadsHostPort(0) == 0);
+    PushKey(9001, SDL_SCANCODE_X, 0); PushKey(9001, SDL_SCANCODE_UP, 0);
+    SDL_JoystickID added = AttachController(0);
+    SDL_Joystick *third = SDL_OpenJoystick(added); assert(third);
+    ReadFrame(0, frame); /* Attachment alone must not defeat reading. */
+    assert(Psyz_PadsHostPort(0) == 0);
+    assert(SDL_SetJoystickVirtualButton(third, SDL_GAMEPAD_BUTTON_SOUTH, true));
+    ReadFrame(1, frame);
+    assert(Psyz_PadsHostPort(0) == 1 && !(frame[3] & 0x40));
+    SDL_CloseJoystick(third); assert(SDL_DetachVirtualJoystick(added));
+    ReadFrame(1, frame); assert(frame[0] == 0xff || frame[1] == 0xff);
+    SetTestArea("s08a"); MgsControllerPortsUpdate();
+    assert(Psyz_PadsHostPort(0) == 0);
+    for (int i = 0; i < 2; ++i) {
+        assert(SDL_SetJoystickVirtualButton(controllers[i], SDL_GAMEPAD_BUTTON_WEST, false));
+        assert(SDL_SetJoystickVirtualButton(controllers[i], SDL_GAMEPAD_BUTTON_SOUTH, false));
+    }
+    ReadFrame(0, frame); GM_PlayerStatus = 0; SetTestArea("");
 }
 
 static void TestAnalogAxes(SDL_Joystick *controllers[2])
@@ -369,7 +471,12 @@ static void TestControllers(void)
     TestPortChord(controllers[0]);
     TestEndingDebug(controllers[0]);
     TestRumble(on_frame);
-    for (int port = 0; port < 2; ++port) {
+    TestMantisIdentity();
+    TestMantisDevices(controllers);
+    SDL_CloseJoystick(controllers[1]);
+    assert(SDL_DetachVirtualJoystick(devices[1]));
+    Psyz_PadsPoll();
+    for (int port = 0; port < 1; ++port) {
         SDL_CloseJoystick(controllers[port]);
         assert(SDL_DetachVirtualJoystick(devices[port]));
     }

@@ -1,0 +1,44 @@
+diff --git a/src/video/windows/SDL_windowsevents.c b/src/video/windows/SDL_windowsevents.c
+--- a/src/video/windows/SDL_windowsevents.c
++++ b/src/video/windows/SDL_windowsevents.c
+@@ -732,6 +732,31 @@
+     }
+ }
+ 
++static void WIN_SendRawKeyboardKey(Uint64 timestamp, SDL_KeyboardID keyboardID, int rawcode, SDL_Scancode code, bool down)
++{
++    /* SDL's aggregate state can already be up when a second physical keyboard
++     * releases the same key. Preserve that device's release for per-keyboard
++     * consumers without changing the aggregate state or modifier policy. */
++    bool physical_release = keyboardID != 0 && !down &&
++        code > SDL_SCANCODE_UNKNOWN && code < SDL_SCANCODE_COUNT &&
++        !SDL_GetKeyboardState(NULL)[code];
++    SDL_SendKeyboardKey(timestamp, keyboardID, rawcode, code, down);
++    if (physical_release && SDL_EventEnabled(SDL_EVENT_KEY_UP)) {
++        SDL_Event event;
++        SDL_zero(event);
++        SDL_Window *focus = SDL_GetKeyboardFocus();
++        event.type = SDL_EVENT_KEY_UP;
++        event.key.timestamp = timestamp;
++        event.key.windowID = focus ? focus->id : 0;
++        event.key.which = keyboardID;
++        event.key.scancode = code;
++        event.key.mod = SDL_GetModState();
++        event.key.key = SDL_GetKeyFromScancode(code, event.key.mod, true);
++        event.key.raw = (Uint16)rawcode;
++        SDL_PushEvent(&event);
++    }
++}
++
+ static void WIN_HandleRawKeyboardInput(Uint64 timestamp, SDL_VideoData *data, HANDLE hDevice, RAWKEYBOARD *rawkeyboard)
+ {
+     SDL_KeyboardID keyboardID = (SDL_KeyboardID)(uintptr_t)hDevice;
+@@ -791,7 +816,7 @@
+         }
+     }
+ 
+-    SDL_SendKeyboardKey(timestamp, keyboardID, rawcode, code, down);
++    WIN_SendRawKeyboardKey(timestamp, keyboardID, rawcode, code, down);
+ }
+ 
+ void WIN_PollRawInput(SDL_VideoDevice *_this, Uint64 poll_start)

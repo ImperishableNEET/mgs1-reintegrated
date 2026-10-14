@@ -1,0 +1,167 @@
+diff --git a/psyz/src/platform/mantis_keyboard.h b/psyz/src/platform/mantis_keyboard.h
+new file mode 100644
+--- /dev/null
++++ b/psyz/src/platform/mantis_keyboard.h
+@@ -0,0 +1,162 @@
++#ifndef PSYZ_MANTIS_KEYBOARD_H
++#define PSYZ_MANTIS_KEYBOARD_H
++
++#include <SDL3/SDL.h>
++#include <string.h>
++#include <stdint.h>
++#include "gamepad_usb_location.h"
++
++/* SDL's raw Windows backend supplies physical keyboard IDs. Device paths are
++ * connection evidence, not serial numbers: they may change with the USB socket.
++ * A missing path/ID must never prove that a reconnect is a different device. */
++typedef struct PsyzMantisKeyboard {
++    SDL_KeyboardID id;
++    int used, connected, identity_checked;
++    bool keys[SDL_SCANCODE_COUNT];
++    bool blocked[SDL_SCANCODE_COUNT];
++    char path[1024];
++    char socket[512];
++} PsyzMantisKeyboard;
++
++static PsyzMantisKeyboard psyz_mantis_keyboards[16];
++static SDL_KeyboardID psyz_mantis_fresh_keyboard;
++static SDL_Scancode psyz_mantis_fresh_key;
++static int psyz_mantis_fresh_down;
++
++static PsyzMantisKeyboard *PsyzMantisKeyboardFind(SDL_KeyboardID id, int create) {
++    PsyzMantisKeyboard *available = NULL;
++    for (unsigned i = 0; i < SDL_arraysize(psyz_mantis_keyboards); ++i) {
++        PsyzMantisKeyboard *keyboard = &psyz_mantis_keyboards[i];
++        if (keyboard->used && keyboard->id == id) return keyboard;
++        if (!keyboard->used && !available) available = keyboard;
++    }
++    if (!create) return NULL;
++    if (!available) {
++        for (unsigned i = 0; i < SDL_arraysize(psyz_mantis_keyboards); ++i) {
++            if (!psyz_mantis_keyboards[i].connected) {
++                available = &psyz_mantis_keyboards[i];
++                break;
++            }
++        }
++    }
++    if (!available) return NULL;
++    memset(available, 0, sizeof(*available));
++    available->used = 1;
++    available->id = id;
++    return available;
++}
++
++static void PsyzMantisKeyboardClearKeys(void) {
++    for (unsigned i = 0; i < SDL_arraysize(psyz_mantis_keyboards); ++i) {
++        for (int key = 0; key < SDL_SCANCODE_COUNT; ++key)
++            if (psyz_mantis_keyboards[i].keys[key]) psyz_mantis_keyboards[i].blocked[key] = true;
++        memset(psyz_mantis_keyboards[i].keys, 0, sizeof(psyz_mantis_keyboards[i].keys));
++    }
++}
++
++static void PsyzMantisKeyboardInit(void) {
++    memset(psyz_mantis_keyboards, 0, sizeof(psyz_mantis_keyboards));
++    psyz_mantis_fresh_down = 0;
++#ifdef _WIN32
++    /* This SDL hint supports changes after video initialization. Do not install
++     * a Windows message hook or change hotkey/background-input registration. */
++    SDL_SetHint(SDL_HINT_WINDOWS_RAW_KEYBOARD, "1");
++#endif
++    int count = 0;
++    SDL_KeyboardID *ids = SDL_GetKeyboards(&count);
++    for (int i = 0; ids && i < count; ++i) {
++        PsyzMantisKeyboard *keyboard = PsyzMantisKeyboardFind(ids[i], 1);
++        if (keyboard) keyboard->connected = 1;
++    }
++    SDL_free(ids);
++}
++
++/* Call before the game event callback. Return a per-device fresh key-down;
++ * SDL's aggregate repeat flag can also mark another keyboard's first press. */
++static int PsyzMantisKeyboardEvent(const SDL_Event *event) {
++    psyz_mantis_fresh_down = 0;
++    if (event->type == SDL_EVENT_WINDOW_FOCUS_LOST) {
++        PsyzMantisKeyboardClearKeys();
++        return 0;
++    }
++    if (event->type == SDL_EVENT_KEYBOARD_ADDED || event->type == SDL_EVENT_KEYBOARD_REMOVED) {
++        PsyzMantisKeyboard *keyboard = PsyzMantisKeyboardFind(event->kdevice.which,
++            event->type == SDL_EVENT_KEYBOARD_ADDED);
++        if (keyboard) {
++            keyboard->connected = event->type == SDL_EVENT_KEYBOARD_ADDED;
++            keyboard->identity_checked = 0;
++            keyboard->path[0] = keyboard->socket[0] = 0;
++            memset(keyboard->keys, 0, sizeof(keyboard->keys));
++            memset(keyboard->blocked, 0, sizeof(keyboard->blocked));
++        }
++        return 0;
++    }
++    if (event->type != SDL_EVENT_KEY_DOWN && event->type != SDL_EVENT_KEY_UP) return 0;
++    SDL_Scancode code = event->key.scancode;
++    if (code <= SDL_SCANCODE_UNKNOWN || code >= SDL_SCANCODE_COUNT) return 0;
++    PsyzMantisKeyboard *keyboard = PsyzMantisKeyboardFind(event->key.which, 1);
++    if (!keyboard) return 0;
++    keyboard->connected = 1;
++    if (event->type == SDL_EVENT_KEY_UP) keyboard->blocked[code] = false;
++    int fresh = event->type == SDL_EVENT_KEY_DOWN && !keyboard->blocked[code] && !keyboard->keys[code];
++    keyboard->keys[code] = event->type == SDL_EVENT_KEY_DOWN && !keyboard->blocked[code];
++    psyz_mantis_fresh_keyboard = event->key.which;
++    psyz_mantis_fresh_key = code;
++    psyz_mantis_fresh_down = fresh;
++    return fresh;
++}
++
++static int PsyzMantisKeyboardFresh(SDL_KeyboardID id, SDL_Scancode code) {
++    return psyz_mantis_fresh_down && psyz_mantis_fresh_keyboard == id && psyz_mantis_fresh_key == code;
++}
++
++static const bool *PsyzMantisKeyboardKeys(SDL_KeyboardID id) {
++    PsyzMantisKeyboard *keyboard = PsyzMantisKeyboardFind(id, 0);
++    return keyboard && keyboard->connected ? keyboard->keys : NULL;
++}
++
++static int PsyzMantisKeyboardConnected(SDL_KeyboardID id) {
++    PsyzMantisKeyboard *keyboard = PsyzMantisKeyboardFind(id, 0);
++    return keyboard && keyboard->connected;
++}
++
++static unsigned int PsyzMantisKeyboardRead(SDL_KeyboardID id, const u_long *config, int length) {
++    const bool *keys = PsyzMantisKeyboardKeys(id);
++    unsigned int result = 0;
++    if (!keys) return 0;
++    for (int i = 0; i < length && i < 32; ++i)
++        if (config[i] > SDL_SCANCODE_UNKNOWN && config[i] < SDL_SCANCODE_COUNT && keys[config[i]])
++            result |= 1u << i;
++    return result;
++}
++
++/* Returns connection status, even when identity evidence is unavailable. A
++ * Windows interface path is weaker than verified serial identity. */
++static int PsyzMantisKeyboardIdentity(SDL_KeyboardID id, char *identity, size_t identity_size,
++                                     char *socket, size_t socket_size) {
++    if (identity_size) identity[0] = 0;
++    if (socket_size) socket[0] = 0;
++    PsyzMantisKeyboard *keyboard = PsyzMantisKeyboardFind(id, 0);
++    if (!keyboard || !keyboard->connected) return 0;
++    if (!keyboard->identity_checked) {
++        keyboard->identity_checked = 1;
++#ifdef _WIN32
++        WCHAR path[1024] = {0};
++        UINT length = SDL_arraysize(path);
++        UINT result = id ? GetRawInputDeviceInfoW((HANDLE)(uintptr_t)id, RIDI_DEVICENAME, path, &length) : (UINT)-1;
++        if (result != (UINT)-1 && result > 0 && result < SDL_arraysize(path) &&
++            WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, path, -1,
++                keyboard->path, sizeof(keyboard->path), NULL, NULL)) {
++            PsyzGamepadUsbLocation(keyboard->path, keyboard->socket, sizeof(keyboard->socket));
++        } else {
++            keyboard->path[0] = 0;
++        }
++#endif
++    }
++    if (identity_size && strlen(keyboard->path) < identity_size)
++        memcpy(identity, keyboard->path, strlen(keyboard->path) + 1);
++    if (socket_size && strlen(keyboard->socket) < socket_size)
++        memcpy(socket, keyboard->socket, strlen(keyboard->socket) + 1);
++    return 1;
++}
++#endif

@@ -1,4 +1,4 @@
-# Reintegrated checkpoint — 2026-10-12
+# Reintegrated checkpoint â€” 2026-10-12
 
 Base: RE:INTEGRAL a6cf2278b1d54e1d71ebfd286b3098a07cc066fe.
 Dependencies and upstream patches: sources.lock.json. Additional Reintegrated
@@ -46,7 +46,7 @@ See the preserved upstream license scopes and THIRD_PARTY.md.
 Fresh isolated repository configure/build passed (1,230 build steps, Windows i686, modern renderer). Executable --version passed. Reused the existing local Clang20/SDK toolchain and Python environment; a pristine-machine setup/install has not been tested. No additional gameplay claim was needed for this repository migration. Build SHA-256: `786aa92bce3188efcf37eee7faa04b470baf55f8c5a6741d04ef2705a5cc516b`.
 
 
-## Branded player candidate — 2026-10-12
+## Branded player candidate â€” 2026-10-12
 
 Version 0.2.0-reintegrated.1; built from d5d277d0aa42. Engine SHA-256:
 `39efd859d8ff2d11f96c6a072d8991abe6616d1cd5f3d66a3588b856e88f1636`.
@@ -417,7 +417,7 @@ ordinary FMV and Codec presentation are unchanged. CPU video contracts pass,
 including original-aspect mode and transitions; the user accepted the widescreen ending. Postcredits canvas proportions remain under review.
 
 
-## Ending diagnostics and disc return — 2026-10-14
+## Ending diagnostics and disc return â€” 2026-10-14
 
 The New Game and Demo Selection disc prompts now issue the native virtual-tray
 open/close handshake, allowing a return from Disc 2 to Disc 1. The existing
@@ -440,3 +440,34 @@ This diagnostic distinguishes mixing from host-output distortion; persistent
 buzzing remains unresolved.
 
 User confirmation: Otacon ending plays without issue; New Game successfully returns to Disc 1 after ending. Huskies video presentation accepted. Persistent audio buzz is not claimed resolved.
+
+
+## Mantis physical-device recognition — .5 release
+
+Each fight attempt records the first deliberate input device and its original
+USB location. A different physical device or verified USB socket defeats reading;
+the original device and port remain readable after reconnect. Uncertain reconnect
+identity grants no resistance. Source selection happens before packet generation,
+excluding held inputs from other devices. All attached controllers are selectable,
+including later hotplug. Connection alone grants nothing.
+
+Windows raw keyboard IDs support separate keyboard state; a bounded SDL adapter
+preserves physical releases suppressed by aggregate keyboard state. Backends
+without physical IDs remain one keyboard source. Focus loss clears held keys.
+Pauses preserve the baseline; actual Game Over and encounter exit reset automatic
+routing. F2/L3+R3 remains explicit; combat/statue scripts are unchanged. There is
+no partial resistance. Held buttons and stick drift do not choose devices.
+
+Windows x86 build, source-packet tests (third-controller hotplug, separate keyboard
+IDs, attachment order, pause/retry/reset), identity/socket cases and keyboard
+focus/overlap CPU fixtures pass. Patch stacks and public-tree audit pass. Live
+combat and hardware confirmation of the new recognition rules remain pending. Earlier controller hot swapping was user-confirmed in previous candidates.
+
+Wireless controllers use controller identity where verified: another recognized
+controller defeats reading, while the original remains readable after power cycling
+or Bluetooth/wired reconnect. A Bluetooth baseline never acquires a later USB
+socket. Controller USB relocation requires known direct-wired products; receiver
+relocation and unknown topology do not qualify. Unknown reconnects retain reading.
+Official PS4/PS5 controller serial providers and a bounded direct-USB product list
+are supported; broad wireless hardware testing remains pending. Windows keyboard
+IDs are supported, but keyboard receiver topology is not individually classified.

@@ -154,14 +154,19 @@
         "patches/psyz-ordered-geometry.patch",
         "patches/psyz-stable-controller-slots.patch",
         "patches/psyz-xa-predictor-rounding.patch",
-        "patches/psyz-audio-pcm-capture.patch"
+        "patches/psyz-audio-pcm-capture.patch",
+        "patches/psyz-mantis-device-routing.patch",
+        "patches/psyz-mantis-keyboard.patch",
+        "patches/psyz-mantis-wireless-evidence.patch"
       ]
     },
     {
       "path": "vendor/psyz/external/SDL",
       "url": "https://github.com/libsdl-org/SDL.git",
       "commit": "fa2c02bb6e21974a89ea9824bc53c9932abe5f9c",
-      "patches": []
+      "patches": [
+        "patches/sdl-physical-keyboard-release.patch"
+      ]
     }
   ],
   "references": [

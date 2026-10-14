@@ -1,0 +1,167 @@
+diff --git a/psyz/include/psyz/input.h b/psyz/include/psyz/input.h
+index 90a711d..805a72f 100644
+--- a/psyz/include/psyz/input.h
++++ b/psyz/include/psyz/input.h
+@@ -68,6 +68,18 @@ typedef void (*PsyzPadPollHook)(char frames[2][PSYZ_PAD_BUF_LEN],
+  */
+ void Psyz_PadsSetPollHook(PsyzPadPollHook hook, void* userdata);
+ 
++/* Encounter-local selection: kind 0 restores ordinary merged input, 1 is
++ * a physical keyboard, 2 a physical gamepad. IDs are backend instance IDs. */
++typedef struct PsyzInputDeviceInfo {
++    unsigned kind, instance;
++    int connected, family;
++    char serial[128], path[1024], usb_socket[512];
++} PsyzInputDeviceInfo;
++int Psyz_PadsDeviceInfo(unsigned kind, unsigned instance, PsyzInputDeviceInfo *info);
++int Psyz_PadsDeviceConnected(const PsyzInputDeviceInfo *baseline);
++void Psyz_PadsSelectDevice(unsigned kind, unsigned instance);
++int Psyz_PadsKeyboardFresh(unsigned instance, unsigned scancode);
++
+ /** Exchange the host input sources assigned to the two emulated ports. */
+ void Psyz_PadsSetHostPortSwap(int swapped);
+ /** Return the host source for a logical port, or -1 for an invalid port. */
+diff --git a/psyz/src/platform/sdl3_common.h b/psyz/src/platform/sdl3_common.h
+index 5694e87..9e945f2 100644
+--- a/psyz/src/platform/sdl3_common.h
++++ b/psyz/src/platform/sdl3_common.h
+@@ -585,24 +585,42 @@ int Psyz_VideoStats(PsyzVideoStats* stats) {
+ 
+ #include "gamepad_slots.h"
+ #include "gamepad_usb_location.h"
++#include "mantis_keyboard.h"
+ 
+ struct Gamepad {
+     SDL_JoystickID id;
+     SDL_Gamepad* dev;
+     const char* name;
+ };
++static unsigned selected_device_kind, selected_device_id;
+ static bool is_pads_init = false;
+ static struct Gamepad gamepads[16] = {0};
+ static PsyzGamepadSlot gamepad_slots[16] = {0};
+ 
++void Psyz_PadsSelectDevice(unsigned kind, unsigned instance) {
++    selected_device_kind = kind;
++    selected_device_id = instance;
++}
++
++int Psyz_PadsKeyboardFresh(unsigned instance, unsigned scancode) {
++    return PsyzMantisKeyboardFresh(instance, scancode);
++}
++
+ static int HostGamepadSlot(int port) {
++    if (selected_device_kind) {
++        if (selected_device_kind == 2 && port == 0) {
++            for (int i = 0; i < LEN(gamepads); ++i)
++                if (gamepads[i].dev && gamepads[i].id == selected_device_id) return i;
++        }
++        return -1;
++    }
+     return PsyzGamepadHostSlot(gamepad_slots, LEN(gamepad_slots), port,
+         SDL_GetHintBoolean("REI_CONTROLLER_IDENTITY_PORTS", false));
+ }
+ 
+ int Psyz_PadsSupportsRumble(int port) {
+     port = HostGamepadSlot(Psyz_PadsHostPort(port));
+-    if (port < 0 || port >= 2 || !gamepads[port].dev) {
++    if (port < 0 || port >= LEN(gamepads) || !gamepads[port].dev) {
+         return 0;
+     }
+     return SDL_GetBooleanProperty(SDL_GetGamepadProperties(gamepads[port].dev),
+@@ -692,6 +710,44 @@ static void AddGamepad(SDL_JoystickID id) {
+     UpdatePlatformTouchControls();
+ }
+ 
++int Psyz_PadsDeviceInfo(unsigned kind, unsigned instance, PsyzInputDeviceInfo *info) {
++    if (!info) return 0;
++    memset(info, 0, sizeof(*info));
++    info->kind = kind; info->instance = instance;
++    if (kind == 1) {
++        info->connected = PsyzMantisKeyboardIdentity(instance, info->path, sizeof(info->path),
++            info->usb_socket, sizeof(info->usb_socket));
++        return info->connected;
++    }
++    if (kind != 2) return 0;
++    for (int i = 0; i < LEN(gamepads); ++i) {
++        if (!gamepads[i].dev || gamepads[i].id != instance) continue;
++        info->connected = 1; info->family = gamepad_slots[i].family;
++        SDL_strlcpy(info->serial, gamepad_slots[i].serial, sizeof(info->serial));
++        SDL_strlcpy(info->usb_socket, gamepad_slots[i].usb_socket, sizeof(info->usb_socket));
++        const char *path = SDL_GetGamepadPath(gamepads[i].dev);
++        if (path) SDL_strlcpy(info->path, path, sizeof(info->path));
++        return 1;
++    }
++    return 0;
++}
++
++int Psyz_PadsDeviceConnected(const PsyzInputDeviceInfo *baseline) {
++    if (!baseline || !baseline->kind) return 0;
++    PsyzInputDeviceInfo current;
++    if (Psyz_PadsDeviceInfo(baseline->kind, baseline->instance, &current) &&
++        (!baseline->serial[0] || !current.serial[0] || !strcmp(baseline->serial, current.serial)) &&
++        (!baseline->path[0] || !current.path[0] || !strcmp(baseline->path, current.path))) return 1;
++    int count = baseline->kind == 1 ? SDL_arraysize(psyz_mantis_keyboards) : LEN(gamepads);
++    for (int i = 0; i < count; ++i) {
++        unsigned id = baseline->kind == 1 ? psyz_mantis_keyboards[i].id : gamepads[i].id;
++        if (!Psyz_PadsDeviceInfo(baseline->kind, id, &current)) continue;
++        if (baseline->serial[0] && current.serial[0] && !strcmp(baseline->serial, current.serial)) return 1;
++        if (baseline->path[0] && current.path[0] && !strcmp(baseline->path, current.path)) return 1;
++    }
++    return 0;
++}
++
+ static void RemoveGamepad(SDL_JoystickID id) {
+     int i;
+     for (i = 0; i < LEN(gamepads); i++) {
+@@ -722,6 +778,7 @@ static void RemoveGamepad(SDL_JoystickID id) {
+ }
+ 
+ void MyPadInit(int mode) {
++    PsyzMantisKeyboardInit();
+ #ifdef PSYZ_GODOT_REMOTE
+     if (!SDL_SetHintWithPriority(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,
+                                  "1", SDL_HINT_OVERRIDE)) {
+@@ -850,6 +907,13 @@ static unsigned int SinglePadRead(int id) {
+         return 0;
+     }
+ 
++    if (selected_device_kind) {
++        if (id != 0) return 0;
++        if (selected_device_kind == 1)
++            return PsyzMantisKeyboardRead(selected_device_id, keyb_p1, LEN(keyb_p1));
++        int slot = HostGamepadSlot(0);
++        return slot >= 0 ? PadRead_Gamepad(&gamepads[slot]) : 0;
++    }
+     u_long pressed = 0;
+     if (id == 0) {
+         if (SDL_HasKeyboard()) {
+@@ -880,6 +944,11 @@ static bool PortHasHostInput(int port) {
+     if (port < 0 || port >= LEN(gamepads)) {
+         return false;
+     }
++    if (selected_device_kind) {
++        if (port != 0) return false;
++        if (selected_device_kind == 1) return PsyzMantisKeyboardConnected(selected_device_id);
++        return HostGamepadSlot(0) >= 0;
++    }
+     if (gamepads[HostGamepadSlot(port)].dev) {
+         return true;
+     }
+@@ -923,7 +992,7 @@ static void BuildPadFrame(int port, PsyzControllerKind kind, char* buf) {
+         }
+         unsigned char rx = 0x80, ry = 0x80, lx = 0x80, ly = 0x80;
+         int slot = HostGamepadSlot(port);
+-        if (gamepads[slot].dev) {
++        if (slot >= 0 && gamepads[slot].dev) {
+             SDL_Gamepad* d = gamepads[slot].dev;
+             rx = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_RIGHTX));
+             ry = AxisToByte(SDL_GetGamepadAxis(d, SDL_GAMEPAD_AXIS_RIGHTY));
+@@ -1092,6 +1161,7 @@ static void PollEvents(void) {
+ #endif
+     SDL_Event event;
+     while (SDL_PollEvent(&event)) {
++        PsyzMantisKeyboardEvent(&event);
+         if (overlay_event_cb) {
+             overlay_event_cb(&event);
+         }

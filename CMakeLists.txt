@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(MGSIntegralNative VERSION 0.2.0 LANGUAGES C CXX)
-set(MGS_RELEASE_VERSION "0.2.0-reintegrated.4" CACHE STRING "Release version")
+set(MGS_RELEASE_VERSION "0.2.0-reintegrated.5" CACHE STRING "Release version")
 set(MGS_BUILD_COMMIT "local" CACHE STRING "Source commit")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 configure_file(include/mgs_build.h.in mgs_build.h @ONLY)
@@ -282,6 +282,17 @@ if(BUILD_TESTING)
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         tests/prepare_audio_capture_test.py vendor/psyz/psyz/src/platform/sdl3_audio.c)
+    set(mantis_keyboard_fixture "${CMAKE_CURRENT_BINARY_DIR}/mantis_keyboard_fixture.h")
+    add_custom_command(OUTPUT "${mantis_keyboard_fixture}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/prepare_mantis_keyboard_test.py"
+            --output "${mantis_keyboard_fixture}"
+        DEPENDS tests/prepare_mantis_keyboard_test.py tests/prepare_mantis_test.py
+            vendor/psyz/psyz/src/platform/mantis_keyboard.h
+            vendor/psyz/external/SDL/src/video/windows/SDL_windowsevents.c)
+    add_executable(mgs_mantis_keyboard_test tests/mgs_mantis_keyboard_test.c "${mantis_keyboard_fixture}")
+    target_include_directories(mgs_mantis_keyboard_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_options(mgs_mantis_keyboard_test PRIVATE -UNDEBUG)
+    add_test(NAME mgs_mantis_keyboard_test COMMAND mgs_mantis_keyboard_test)
     add_executable(mgs_audio_capture_test tests/mgs_audio_capture_test.c)
     target_include_directories(mgs_audio_capture_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
     target_compile_options(mgs_audio_capture_test PRIVATE -UNDEBUG)
