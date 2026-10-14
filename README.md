@@ -22,7 +22,7 @@ Generic Castlevania / Other Life names are heuristic aliases for those lines.
 
 ## Download
 
-[Experimental Windows x86 prerelease](https://github.com/ImperishableNEET/mgs1-reintegrated/releases/tag/v0.2.0-reintegrated.3)
+[Experimental Windows x86 prerelease](https://github.com/ImperishableNEET/mgs1-reintegrated/releases/tag/v0.2.0-reintegrated.4)
 Download windows-x86.zip, extract the folder, and open MGS-Reintegrated.exe.
 Supply your own Integral CUE/BIN discs. This is a 32-bit Windows build; review
 the release notes for verification limits.

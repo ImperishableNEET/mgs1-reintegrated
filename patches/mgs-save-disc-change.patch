@@ -1,0 +1,33 @@
+diff --git a/source/onoda/abst/ab_ch.c b/source/onoda/abst/ab_ch.c
+--- a/source/onoda/abst/ab_ch.c
++++ b/source/onoda/abst/ab_ch.c
+@@ -5,6 +5,9 @@
+ 
+ #include <libcd.h>
+ #include <stdio.h>
++#ifdef MGS_NATIVE
++#include "mgs_disc.h"
++#endif
+ 
+ // FIXME: it's the same struct (but different data) as in change.c (in change overlay)
+ typedef struct _Unknown2
+@@ -360,6 +363,9 @@
+         break;
+ 
+     case 2:
++#ifdef MGS_NATIVE
++        MgsDiscChangeOpenFor(work->disc_no);
++#endif
+         param[ 0 ] = 0;
+         CdControlB( CdlNop, param, result );
+ 
+@@ -375,6 +381,9 @@
+         break;
+ 
+     case 3:
++#ifdef MGS_NATIVE
++        MgsDiscChangeClose();
++#endif
+         param[ 0 ] = 0;
+         CdControlB( CdlNop, param, result );
+ 

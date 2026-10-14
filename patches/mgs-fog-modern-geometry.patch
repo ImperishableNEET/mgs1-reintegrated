@@ -1,0 +1,190 @@
+diff --git a/source/takabe/libdg2.c b/source/takabe/libdg2.c
+--- a/source/takabe/libdg2.c
++++ b/source/takabe/libdg2.c
+@@ -7,6 +7,7 @@
+ #ifdef MGS_NATIVE
+ #include "mgs_video.h"
+ #include "mgs_visibility.h"
++#include "mgs_texture_correction.h"
+ #endif
+ 
+ // Modified versions of functions from libdg
+@@ -1139,6 +1140,43 @@
+ }
+ 
+ // modified DG_WriteObjVerticesIndirect
++#ifdef MGS_NATIVE
++unsigned int s12c_800D5CDC(unsigned int indices, POLY_GT4 *packs,
++                          POLY_GT4 *parent_packs, SVECTOR *vertices)
++{
++    static const unsigned char shifts[4] = {0, 8, 24, 16};
++    short *xy[4] = {&packs->x0, &packs->x1, &packs->x2, &packs->x3};
++    unsigned flags = *(unsigned short *)(SCRPAD_ADDR + 0x1FE);
++    /* Packed fog depth includes clip bits. Keep the original signed, wrapping
++     * accumulation/division (-fwrapv), including nonpositive bit patterns. */
++    int total = 0, count = 0;
++    if (!parent_packs) return 0;
++    for (int i = 0; i < 4; ++i) {
++        unsigned vertex = (indices >> shifts[i]) & 0xFF;
++        const void *source;
++        unsigned value;
++        if (vertex & 0x80) {
++            int offset = vertices[vertex & 0x7F].pad;
++            source = (char *)parent_packs + offset;
++            if (flags & 4) {
++                /* Fog shading consumes the original parent color pointer. */
++                unsigned color = (unsigned)((const char *)source - sizeof(unsigned));
++                memcpy((char *)xy[i] - sizeof(unsigned), &color, sizeof(color));
++            }
++        } else {
++            int depth;
++            source = (char *)getScratchAddr(0) + vertex * sizeof(unsigned);
++            memcpy(&depth, (const char *)source + 0x200, sizeof(depth));
++            total += depth;
++            ++count;
++        }
++        memcpy(&value, source, sizeof(value));
++        memcpy(xy[i], &value, sizeof(value));
++        MgsTextureCorrectionCopy(xy[i], source);
++    }
++    return count ? total / count : 0;
++}
++#else
+ unsigned int s12c_800D5CDC(unsigned int normal_idx, POLY_GT4 *packs)
+ {
+     int          *pack_ptr;
+@@ -1204,8 +1242,14 @@
+     return 0;
+ }
+ 
++#endif
++
+ // Modified DG_WriteObjVertices
+-POLY_GT4 *s12c_800D5DE0(unsigned int *pFaceIndices, POLY_GT4 *pPoly, int n_packs)
++POLY_GT4 *s12c_800D5DE0(unsigned int *pFaceIndices, POLY_GT4 *pPoly, int n_packs
++#ifdef MGS_NATIVE
++                       , POLY_GT4 *parent_packs, SVECTOR *vertices
++#endif
++                       )
+ {
+     unsigned int v0, v1, v2;
+     unsigned int n0, n1, n2, n3;
+@@ -1221,7 +1265,11 @@
+ 
+         if (n0 & 0x80808080)
+         {
+-            tag = s12c_800D5CDC(n0, pPoly);
++            tag = s12c_800D5CDC(n0, pPoly
++#ifdef MGS_NATIVE
++                                   , parent_packs, vertices
++#endif
++                                   );
+             continue;
+         }
+ 
+@@ -1243,6 +1291,12 @@
+         n1 = n1 + scratchpad;
+         n2 = n2 + scratchpad;
+         n3 = n3 + scratchpad;
++#ifdef MGS_NATIVE
++        /* Retain source addresses before the fog depth/clip words overwrite
++         * n0..n3. Metadata is separate from authored packet data. */
++        const void *projected[4] = {(const void *)n0, (const void *)n1,
++                                    (const void *)n2, (const void *)n3};
++#endif
+ 
+         v0 = ((unsigned int *)n0)[0];
+         n0 = ((unsigned int *)n0)[0x80];
+@@ -1283,6 +1337,15 @@
+             gte_read_opz(opz);
+             LSTORE(v2, &pPoly->x2);
+         }
++
++#ifdef MGS_NATIVE
++        /* Register after packet XY stores: metadata validates their exact
++         * packed value when the renderer later consumes this packet. */
++        MgsTextureCorrectionCopy(&pPoly->x0, projected[0]);
++        MgsTextureCorrectionCopy(&pPoly->x1, projected[1]);
++        MgsTextureCorrectionCopy(&pPoly->x2, projected[2]);
++        MgsTextureCorrectionCopy(&pPoly->x3, projected[3]);
++#endif
+ 
+         if (opz < 1)
+         {
+@@ -1411,7 +1474,11 @@
+ }
+ 
+ // Modified DG_TransObj
+-void s12c_800D6020(DG_OBJ *obj, int idx)
++void s12c_800D6020(DG_OBJ *obj, int idx
++#ifdef MGS_NATIVE
++                   , POLY_GT4 *parent_packs, int ordered
++#endif
++                   )
+ {
+     POLY_GT4   *packs;
+     DG_MDL     *mdl;
+@@ -1433,12 +1500,31 @@
+             s12c_800D5C48(verts, mdl->n_verts);
+         }
+ 
++#ifdef MGS_NATIVE
++        MgsTextureCorrectionCapture(mdl->verts, mdl->n_verts, (const DVECTOR *)getScratchAddr(0));
++        POLY_GT4 *first_pack = packs;
++#endif
+         *(unsigned short *)(SCRPAD_ADDR + 0x1FC) = !(mdl->flag & DG_MODEL_BOTHFACE);
+         do
+         {
+         } while (0);
+ 
+-        packs = s12c_800D5DE0((unsigned int *)mdl->vindices, packs, obj->n_packs);
++        packs = s12c_800D5DE0((unsigned int *)mdl->vindices, packs, obj->n_packs
++#ifdef MGS_NATIVE
++                             , parent_packs, mdl->verts
++#endif
++                             );
++#ifdef MGS_NATIVE
++        unsigned shadow_texture = GV_StrCode("shadow");
++        for (int face = 0; face < obj->n_packs; ++face) {
++            if (ordered || (mdl->texids && mdl->texids[face] == shadow_texture)) {
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x0);
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x1);
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x2);
++                MgsTextureCorrectionOrderOnly(&first_pack[face].x3);
++            }
++        }
++#endif
+         obj = obj->extend;
+     }
+ }
+@@ -1480,10 +1566,16 @@
+             }
+ 
+             pMdl = pObj->model;
++#ifdef MGS_NATIVE
++            /* A root model has no parent. Keep host pointers outside scratch
++             * words, matching the regular native model transform path. */
++            pParent = pMdl->parent >= 0 ? &pObjs->objs[pMdl->parent] : NULL;
++            POLY_GT4 *parent_packs = pParent ? pParent->packs[GV_Clock] : NULL;
++#else
+             pParent = &pObjs->objs[pMdl->parent];
+-
+             ((POLY_GT4 **)pScratchpad)[0xfe] = pParent->packs[GV_Clock];
+             ((SVECTOR **)pScratchpad)[0xff] = pMdl->verts;
++#endif
+ 
+             gte_SetRotMatrix(&pObj->screen);
+             gte_SetTransMatrix(&pObj->screen);
+@@ -1506,7 +1598,11 @@
+                 pScratchpad[0xff] |= 4;
+             }
+ 
+-            s12c_800D6020(pObj, idx);
++            s12c_800D6020(pObj, idx
++#ifdef MGS_NATIVE
++                           , parent_packs, (pObjs->flag & DG_FLAG_NATIVE_ORDERED) != 0
++#endif
++                           );
+         }
+     }
+ }

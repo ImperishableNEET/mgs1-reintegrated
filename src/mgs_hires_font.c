@@ -171,6 +171,9 @@ const MgsHiResFontSnapshot *MgsHiResFontTakeSprite(const void *packet)
 typedef struct InterfaceGlyph { const void *packet; unsigned char code; unsigned short fore; unsigned uv_clut; } InterfaceGlyph;
 static InterfaceGlyph interface_glyphs[1024];
 static unsigned interface_count;
+/* Only this prefix can contain queued packets. Most boards use far fewer
+ * glyphs than the overflow-safe capacity; holes still retain native order. */
+static unsigned interface_extent;
 static unsigned short interface_fore;
 static int interface_palette_valid;
 void MgsHiResFontSetInterfacePalette(const unsigned short *palette)
@@ -207,29 +210,31 @@ void MgsHiResFontRegisterInterfaceGlyph(const void *packet, unsigned code, unsig
         MgsHiResFontTakeInterfaceGlyph(packet, NULL, NULL);
         return;
     }
-    unsigned empty = 1024;
-    for (unsigned i = 0; i < 1024; ++i) {
+    unsigned empty = interface_extent;
+    for (unsigned i = 0; i < interface_extent; ++i) {
         if (interface_glyphs[i].packet == packet) {
             interface_glyphs[i] = (InterfaceGlyph){packet, (unsigned char)code, interface_fore, uv_clut};
             return;
         }
-        if (!interface_glyphs[i].packet && empty == 1024) empty = i;
+        if (!interface_glyphs[i].packet && empty == interface_extent) empty = i;
     }
     if (empty < 1024) {
         ++interface_count;
         interface_glyphs[empty] = (InterfaceGlyph){packet, (unsigned char)code, interface_fore, uv_clut};
+        if (empty == interface_extent) ++interface_extent;
     }
 }
 unsigned MgsHiResFontTakeInterfaceGlyph(const void *packet, unsigned short *fore, unsigned *uv_clut)
 {
     if (!packet || !interface_count) return 0;
-    for (unsigned i = 0; i < 1024; ++i) {
+    for (unsigned i = 0; i < interface_extent; ++i) {
         if (interface_glyphs[i].packet == packet) {
             unsigned code = interface_glyphs[i].code;
             if (fore) *fore = interface_glyphs[i].fore;
             if (uv_clut) *uv_clut = interface_glyphs[i].uv_clut;
             interface_glyphs[i].packet = NULL;
-            --interface_count;
+            if (--interface_count == 0)
+                interface_extent = 0;
             return code;
         }
     }

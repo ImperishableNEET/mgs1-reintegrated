@@ -1,8 +1,8 @@
-# Unpublished optimization candidate — 2026-10-13
+# Optimization notes — 2026-10-13
 
 These measurements cover isolated CPU work on the Windows i686 Clang `-O2`
 build. They do not establish a game frame-rate improvement. The published
-`v0.2.0-reintegrated.2` package is unchanged.
+The retained changes below shipped in `v0.2.0-reintegrated.3`; subsequent local work is documented separately.
 
 ## Retained changes
 
@@ -44,3 +44,20 @@ launched during this batch.
 The combined candidate passes 16 distinct selected checks covering native/scaled GPU
 rendering, sharp text, capture output, projection metadata, language packs,
 controller packets/hints, scanner fairness and overlay-state layout.
+
+## Local follow-up (13 October, evening)
+
+Interface glyph registration now scans only the previously occupied prefix of
+its 1,024-slot queue, resetting that prefix when the queue drains. It retains
+hole reuse, replacement, immutable palettes, unsupported-glyph removal and
+original overflow fallback. An isolated paired CPU benchmark measured 464.6 ms
+versus 421.2 ms for 4,000 boards of 32 glyphs (9.4% less time). At full capacity,
+1,000 boards measured 3,775.8 ms versus 3,850.8 ms (2.0% more time). This is a
+small-menu tradeoff, not an FPS improvement claim. 200,000 randomized operations
+matched original glyph/palette/UV results; the focused CPU fixture passed.
+
+Build scripts derive their default version from CMakeLists.txt; packaging derives
+it from the selected build's CMakeCache.txt, retaining explicit overrides and
+executable-version validation. This removes the stale .1 default. Default-version
+packaging of the .3 build passed. The status document's remaining legacy byte was
+normalized to UTF-8. No gameplay or GPU stress tests were run in this follow-up.

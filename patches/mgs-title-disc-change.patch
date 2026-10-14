@@ -1,0 +1,60 @@
+--- a/source/onoda/open/open.c
++++ b/source/onoda/open/open.c
+@@ -21,6 +21,7 @@
+ #include "menu/menuman.h"
+ #ifdef MGS_NATIVE
+ #include "mgs_cadence.h"
++#include "mgs_disc.h"
+ #include "mgs_video.h"
+ #endif
+ 
+@@ -7969,6 +7970,9 @@
+         }
+         break;
+     case 2:
++#ifdef MGS_NATIVE
++        MgsDiscChangeOpenFor(1);
++#endif
+         param[0] = 0;
+         CdControlB(CdlNop, param, result);
+ 
+@@ -7983,6 +7987,9 @@
+         }
+         break;
+     case 3:
++#ifdef MGS_NATIVE
++        MgsDiscChangeClose();
++#endif
+         param[0] = 0;
+         CdControlB(CdlNop, param, result);
+ 
+--- a/source/onoda/demosel/demosel.c
++++ b/source/onoda/demosel/demosel.c
+@@ -1,4 +1,7 @@
+ #include "demosel.h"
++#ifdef MGS_NATIVE
++#include "mgs_disc.h"
++#endif
+ 
+ #include <stdio.h>
+ #include <sys/types.h>
+@@ -382,6 +385,9 @@
+         break;
+ 
+     case 2:
++#ifdef MGS_NATIVE
++        MgsDiscChangeOpenFor(1);
++#endif
+         param[0] = 0;
+         CdControlB(CdlNop, param, result);
+ 
+@@ -397,6 +403,9 @@
+         break;
+ 
+     case 3:
++#ifdef MGS_NATIVE
++        MgsDiscChangeClose();
++#endif
+         param[0] = 0;
+         CdControlB(CdlNop, param, result);
+ 

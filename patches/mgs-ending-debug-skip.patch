@@ -1,0 +1,90 @@
+diff --git a/source/game/movie.c b/source/game/movie.c
+index 2fecfef..3661085 100644
+--- a/source/game/movie.c
++++ b/source/game/movie.c
+@@ -18,6 +18,7 @@
+ #include "mts/mts_pad.h"
+ #ifdef MGS_NATIVE
+ #include "mgs_video.h"
++#include "mgs_ending_debug.h"
+ #endif
+ 
+ /*---------------------------------------------------------------------------*/
+@@ -300,7 +301,11 @@ static void Act2(Work *work)
+         set_fade(fade);
+     }
+ 
+-    if (mts_read_pad(0) & PAD_CROSS)
++    if ((mts_read_pad(0) & PAD_CROSS)
++#ifdef MGS_NATIVE
++        || MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_MOVIE)
++#endif
++       )
+     {
+         res_flag = 0;
+     }
+@@ -373,6 +378,7 @@ static void Die(Work *work)
+ {
+ #ifdef MGS_NATIVE
+     MgsVideoMovie(0);
++    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE, 0);
+ #endif
+     DecDCToutCallback(NULL);
+     StUnSetRing();
+@@ -427,6 +433,7 @@ void *NewMovie(unsigned int code)
+     GV_SetNamedActor(&movie_work.actor, Act, Die, "movie.c");
+ #ifdef MGS_NATIVE
+     MgsVideoMovie(1);
++    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE, 1);
+ #endif
+ 
+     movie_work.info = file;
+diff --git a/source/takabe/ending2.c b/source/takabe/ending2.c
+index 550e866..91e4e0a 100644
+--- a/source/takabe/ending2.c
++++ b/source/takabe/ending2.c
+@@ -19,6 +19,9 @@
+ #include "takabe/thing.h"
+ #include "mts/mts.h"
+ #include "mts/taskid.h"
++#ifdef MGS_NATIVE
++#include "mgs_ending_debug.h"
++#endif
+ 
+ typedef struct Ending2Pair
+ {
+@@ -808,6 +811,13 @@ void Ending2Act_800C71D8(Work *work)
+     int             count;
+     int             new_framerate;
+ 
++#ifdef MGS_NATIVE
++    if (MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_ROLL)) {
++        GV_DestroyActor(&work->actor);
++        return;
++    }
++#endif
++
+     shade = 150;
+ 
+     switch (Ending2_800C677C(work))
+@@ -952,6 +962,10 @@ void Ending2Die_800C76BC(Work *work)
+     DRAWENV  drawenv;
+     DISPENV *dispenv;
+ 
++#ifdef MGS_NATIVE
++    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_ROLL, 0);
++#endif
++
+     Ending2_800C673C(work);
+ 
+     DrawSync(0);
+@@ -1111,6 +1125,9 @@ void *NewEndingRoll(int arg0)
+             work->field_40 = 1;
+         }
+         Ending2GetResources_800C77F8(work, arg0);
++#ifdef MGS_NATIVE
++        MgsEndingDebugPlayback(MGS_ENDING_DEBUG_ROLL, 1);
++#endif
+     }
+     return (void *)work;
+ }

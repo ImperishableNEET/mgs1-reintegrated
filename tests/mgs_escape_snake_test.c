@@ -9,6 +9,13 @@
 #include <stdio.h>
 #include <string.h>
 
+char *GCL_GetVar(char *token, int *type, int *value)
+{
+  (void)token; (void)type; (void)value;
+  assert(!"Escape damage must not query control-room story state");
+  return NULL;
+}
+
 typedef struct Input {
   int kind, buttons, analog, dx, dy, dead, lock, first, timer, commands, aim_y,
       shot, reverse, homing, hp, damage, target_hp, game_status, blink, hidden,
@@ -127,7 +134,7 @@ VECTOR *Square0(VECTOR *a, VECTOR *out) {
   out->vz = a->vz * a->vz;
   return out;
 }
-long MgsSquareRoot0(long value) {
+int32_t MgsSquareRoot0(int32_t value) {
   Record(2, 10, value);
   return 4011;
 }

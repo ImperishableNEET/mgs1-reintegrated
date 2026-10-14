@@ -2,7 +2,9 @@
 #define MGS_DISC_H
 
 int MgsDiscConfigure(const char *initial_disc, const char *disc_two);
+int MgsDiscConfigurePaths(const char *initial_disc, const char *disc_one, const char *disc_two);
 void MgsDiscChangeOpen(void);
+void MgsDiscChangeOpenFor(int disc);
 void MgsDiscChangeClose(void);
 
 #endif

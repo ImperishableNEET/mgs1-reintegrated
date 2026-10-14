@@ -133,3 +133,60 @@ with subtractive ABR=2 blending, unlike the black binocular/scope wedges.
 Extend their paired outer boundary vertices as well, gated by exact white,
 semi-transparency and ABR=2. User confirmed PSG1 and camera masks; gas-mask
 correction has CPU coverage but awaits gameplay confirmation.
+
+## Short flicker review (13 October, evening)
+
+User confirmed the first Sniper Wolf fight is fine. No aiming changes are justified
+by that report. The short source review found the existing geometry lookup rejects
+stale packet XY, both primitive packet banks receive native lengths, and texture
+feedback flushes include pending CLUT writes. No additional defect was established
+in those paths, so no renderer patch was made.
+
+The snowfield fog transform still bypasses modern projection metadata. Enabling
+that metadata needs explicit parent/indirect vertex handling and shadow ordering
+coverage; it is deferred rather than treated as a quick flicker fix. No blanket
+depth bias, draw-order changes, or generic packet zeroing were introduced. The
+pickup initial-light candidate remains gameplay-unconfirmed.
+
+## Fog geometry and snowfall follow-up
+
+The user clarified that both Sniper Wolf fights were working; the second fight
+required aiming upward initially. No aiming, boss or weapon changes are included.
+
+Fog stages replace the normal model transform callback. The native fog callback
+now carries projected vertex metadata through direct and parent-linked faces,
+retains native ordered groups/shadow textures, and avoids dereferencing a missing
+root-model parent. Modern options can therefore use the same projection data as
+ordinary stages. Fog colors and original packet/culling fields remain authored.
+CPU validation covers option-off packet parity and parent/local vertex mixtures;
+live visual verification remains pending.
+
+Snow (`thing/snow.c`, `snowarea`, and `kojo/sstorm.c`) uses authored world-space
+volumes and recycling, not a fixed 4:3 screen overlay. The common DG clip expands
+for widescreen. Tile positions/sizes scale through the modern viewport, so the
+original 1–2 logical-pixel flakes become larger pixel blocks at high resolution.
+A wider camera may reveal authored volume edges or lower apparent density, but
+expanding spawn volumes/counts can change particle positions, recycling and RNG.
+No such actor changes are made. Softer shapes or fractional-position flakes would
+be a separate optional presentation change requiring visual comparison.
+
+## Control-room screen layers
+
+The control-room map has six additive CRT/console glow faces laid on or near
+the underlying screen surfaces. Their model flags specify original positive or
+negative ordering-table raises; physical depth tests can override that separation.
+A resource-and-structure guard now preserves authored ordering for those two
+verified glow meshes in both normal and fog transform paths. Projected subpixel
+coordinates and perspective texture data are retained. Other translucent meshes,
+including physically separated hanging-display layers, remain depth tested.
+The user confirmed the control-room screen fixes in gameplay.
+
+## Freight lift and warehouse wall lights
+
+The subsequent recordings identify breakup in wall lights. CPU asset inspection
+confirmed coplanar or nearly coplanar additive light sheets in the freight lift
+and warehouse, plus two small subtractive lift layers laid directly on cyan
+lamp surfaces. Resource/model/material/bounds guards preserve original ordering
+for these verified layers in normal and fog transforms. Larger shaft shading
+meshes retain depth testing. Precise projection and perspective remain enabled.
+Live acceptance of this extended candidate remains pending.

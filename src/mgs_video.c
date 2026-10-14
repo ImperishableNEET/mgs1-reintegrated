@@ -15,7 +15,7 @@ enum { VIDEO_COMMAND = 0xf3, FRAME_WIDTH = 320, FRAME_HEIGHT = 224,
 int ReiReintegratedTitleVisible;
 static unsigned view_numerator = 1, view_denominator = 1;
 static int widescreen, frame_active, frame_centre, frame_buffer, capture_output, movie_active;
-static int codec_active, menu_stage, text_active, title_main_menu;
+static int codec_active, menu_stage, text_active, title_main_menu, credits_stage;
 static unsigned text_idle_frames;
 static unsigned char buffer_original[2], presented_original;
 static unsigned output_width, output_height;
@@ -77,7 +77,9 @@ static unsigned GreatestCommonDivisor(unsigned first, unsigned second)
 
 static int OriginalCanvas(void)
 {
-    return movie_active || codec_active || (menu_stage && !title_main_menu);
+    /* Credits are an authored canvas too, but stretch their completed frame
+     * to the requested widescreen output without moving individual elements. */
+    return !credits_stage && (movie_active || codec_active || (menu_stage && !title_main_menu));
 }
 
 static int SetChannelTransform(int mode)
@@ -384,6 +386,7 @@ void MgsVideoStage(const char *name)
     title_main_menu = 0;
     text_active = 0;
     text_idle_frames = 0;
+    credits_stage = strcmp(name, "roll") == 0;
     menu_stage = 0;
     for (size_t index = 0; index < sizeof(canvases) / sizeof(canvases[0]); ++index)
         if (strcmp(name, canvases[index]) == 0) {

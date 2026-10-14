@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(MGSIntegralNative VERSION 0.2.0 LANGUAGES C CXX)
-set(MGS_RELEASE_VERSION "0.2.0-reintegrated.3" CACHE STRING "Release version")
+set(MGS_RELEASE_VERSION "0.2.0-reintegrated.4" CACHE STRING "Release version")
 set(MGS_BUILD_COMMIT "local" CACHE STRING "Source commit")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 configure_file(include/mgs_build.h.in mgs_build.h @ONLY)
@@ -229,6 +229,63 @@ if(BUILD_TESTING)
     target_compile_definitions(mgs_fog_visibility_test PRIVATE __psyz MGS_NATIVE INTEGRAL)
     target_compile_options(mgs_fog_visibility_test PRIVATE -UNDEBUG)
     add_test(NAME mgs_fog_visibility_test COMMAND mgs_fog_visibility_test)
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/prepare_fog_geometry_test.py"
+        --output "${CMAKE_CURRENT_BINARY_DIR}/fog_geometry_helpers.inc"
+        RESULT_VARIABLE fog_geometry_result)
+    if(NOT fog_geometry_result EQUAL 0)
+        message(FATAL_ERROR "Could not prepare fog projection regression")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        tests/prepare_fog_geometry_test.py vendor/mgs/source/takabe/libdg2.c)
+    add_executable(mgs_fog_geometry_test tests/mgs_fog_geometry_test.c src/mgs_texture_correction.c)
+    target_include_directories(mgs_fog_geometry_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
+        include vendor/mgs/source vendor/mgs/source/include vendor/psyz/psyz/include)
+    target_compile_definitions(mgs_fog_geometry_test PRIVATE __psyz MGS_NATIVE INTEGRAL)
+    target_compile_options(mgs_fog_geometry_test PRIVATE -UNDEBUG -fwrapv -fno-strict-aliasing)
+    add_test(NAME mgs_fog_geometry_test COMMAND mgs_fog_geometry_test)
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/prepare_smoke_script_test.py"
+        --output "${CMAKE_CURRENT_BINARY_DIR}/smoke_script_helpers.inc"
+        RESULT_VARIABLE smoke_script_result)
+    if(NOT smoke_script_result EQUAL 0)
+        message(FATAL_ERROR "Could not prepare smoke script regression")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        tests/prepare_smoke_script_test.py vendor/mgs/source/anime/effect/socom.c
+        vendor/mgs/source/anime/effect/smoke3.c vendor/mgs/source/anime/effect/smoke_ln.c)
+    add_executable(mgs_smoke_script_test tests/mgs_smoke_script_test.c)
+    target_include_directories(mgs_smoke_script_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}"
+        include vendor/mgs/source vendor/mgs/source/include vendor/psyz/psyz/include)
+    target_compile_definitions(mgs_smoke_script_test PRIVATE __psyz MGS_NATIVE INTEGRAL)
+    target_compile_options(mgs_smoke_script_test PRIVATE -UNDEBUG -funsigned-char)
+    add_test(NAME mgs_smoke_script_test COMMAND mgs_smoke_script_test)
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/prepare_xa_decoder_test.py"
+        --output "${CMAKE_CURRENT_BINARY_DIR}/xa_decoder_helpers.inc"
+        RESULT_VARIABLE xa_decoder_result)
+    if(NOT xa_decoder_result EQUAL 0)
+        message(FATAL_ERROR "Could not prepare XA decoder regression")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        tests/prepare_xa_decoder_test.py vendor/psyz/psyz/src/psyz/libcd.c)
+    add_executable(mgs_xa_decoder_test tests/mgs_xa_decoder_test.c)
+    target_include_directories(mgs_xa_decoder_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_options(mgs_xa_decoder_test PRIVATE -UNDEBUG)
+    add_test(NAME mgs_xa_decoder_test COMMAND mgs_xa_decoder_test)
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/prepare_audio_capture_test.py"
+        --output "${CMAKE_CURRENT_BINARY_DIR}/audio_capture_helpers.inc"
+        RESULT_VARIABLE audio_capture_result)
+    if(NOT audio_capture_result EQUAL 0)
+        message(FATAL_ERROR "Could not prepare PCM capture test")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        tests/prepare_audio_capture_test.py vendor/psyz/psyz/src/platform/sdl3_audio.c)
+    add_executable(mgs_audio_capture_test tests/mgs_audio_capture_test.c)
+    target_include_directories(mgs_audio_capture_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_compile_options(mgs_audio_capture_test PRIVATE -UNDEBUG)
+    add_test(NAME mgs_audio_capture_test COMMAND mgs_audio_capture_test)
     find_program(MGS_PWSH pwsh REQUIRED)
     add_test(NAME video_cli COMMAND "${MGS_PWSH}" -NoProfile -File
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_video_cli.ps1"

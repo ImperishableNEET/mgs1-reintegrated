@@ -110,7 +110,15 @@
         "patches/mgs-scripted-gas-fatal.patch",
         "patches/mgs-electric-floor-depth-order.patch",
         "patches/mgs-office-floor-depth-order.patch",
-        "patches/mgs-mantis-installed-memory.patch"
+        "patches/mgs-mantis-installed-memory.patch",
+        "patches/mgs-pickup-initial-light.patch",
+        "patches/mgs-fog-modern-geometry.patch",
+        "patches/mgs-save-disc-change.patch",
+        "patches/mgs-control-room-glow-order.patch",
+        "patches/mgs-wall-light-order.patch",
+        "patches/mgs-writable-smoke-scripts.patch",
+        "patches/mgs-title-disc-change.patch",
+        "patches/mgs-ending-debug-skip.patch"
       ]
     },
     {
@@ -144,7 +152,9 @@
         "patches/psyz-audio-output-suppression.patch",
         "patches/reintegrated-psyz.patch",
         "patches/psyz-ordered-geometry.patch",
-        "patches/psyz-stable-controller-slots.patch"
+        "patches/psyz-stable-controller-slots.patch",
+        "patches/psyz-xa-predictor-rounding.patch",
+        "patches/psyz-audio-pcm-capture.patch"
       ]
     },
     {

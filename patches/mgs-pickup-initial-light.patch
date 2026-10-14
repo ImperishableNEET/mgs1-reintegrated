@@ -1,0 +1,20 @@
+diff --git a/source/game/item.c b/source/game/item.c
+index 71489ee..9a3c6fa 100644
+--- a/source/game/item.c
++++ b/source/game/item.c
+@@ -780,6 +780,7 @@ static int GetResources(Work *work, int name, int where)
+     }
+ 
+     GM_ActControl(control);
++    DG_GetLightMatrix2(&control->mov, work->light);
+     GM_ActObject2((OBJECT *)body);
+     return 1;
+ }
+@@ -859,6 +860,7 @@ static int GetResourcesPut(Work *work, SVECTOR *pos, SVECTOR *step, ITEM_INFO *i
+ 
+     GM_InitObjectNoRots(&work->body, KMD_BOX_01 + type, BODY_FLAG, 0);
+     GM_ConfigObjectJoint((OBJECT *)&work->body);
++    DG_GetLightMatrix2(&control->mov, work->light);
+     GM_ConfigObjectLight((OBJECT *)&work->body, work->light);
+     GM_ConfigObjectStep((OBJECT *)&work->body, &control->step);
+ 

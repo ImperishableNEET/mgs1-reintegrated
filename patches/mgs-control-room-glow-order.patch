@@ -1,0 +1,52 @@
+diff --git a/source/libdg/trans.c b/source/libdg/trans.c
+--- a/source/libdg/trans.c
++++ b/source/libdg/trans.c
+@@ -504,6 +504,7 @@
+     POLY_GT4 *parent_packs;
+     /* Resolve once per channel; never retain a cache pointer across stage loads. */
+     const DG_DEF *office_floor = GV_GetCache(GV_CacheID(0xc762, 'k'));
++    const DG_DEF *control_room = GV_GetCache(GV_CacheID(0xcb24, 'k'));
+ #endif
+ 
+     work = (SCRATCH *)getScratchAddr(0);
+@@ -552,7 +553,8 @@
+             DG_TransObj(obj, idx
+ #ifdef MGS_NATIVE
+                         , parent_packs, (objs->flag & DG_FLAG_NATIVE_ORDERED) != 0 ||
+-                          MgsOfficeFloorOrdered(office_floor, objs->def, model)
++                          MgsOfficeFloorOrdered(office_floor, objs->def, model) ||
++                          MgsControlRoomGlowOrdered(control_room, objs->def, model)
+ #endif
+                         );
+         }
+diff --git a/source/takabe/libdg2.c b/source/takabe/libdg2.c
+--- a/source/takabe/libdg2.c
++++ b/source/takabe/libdg2.c
+@@ -8,6 +8,7 @@
+ #include "mgs_video.h"
+ #include "mgs_visibility.h"
+ #include "mgs_texture_correction.h"
++#include "mgs_ordered_model.h"
+ #endif
+ 
+ // Modified versions of functions from libdg
+@@ -1531,6 +1532,9 @@
+ 
+ void FogTransChanl_800D63B0(DG_CHANL *chanl, int idx)
+ {
++#ifdef MGS_NATIVE
++    const DG_DEF *control_room = GV_GetCache(GV_CacheID(0xcb24, 'k'));
++#endif
+     short    *pScratchpad = (short *)getScratchAddr(0);
+     DG_OBJS **ppObjs;
+     int       objects;
+@@ -1600,7 +1604,8 @@
+ 
+             s12c_800D6020(pObj, idx
+ #ifdef MGS_NATIVE
+-                           , parent_packs, (pObjs->flag & DG_FLAG_NATIVE_ORDERED) != 0
++                           , parent_packs, (pObjs->flag & DG_FLAG_NATIVE_ORDERED) != 0 ||
++                             MgsControlRoomGlowOrdered(control_room, pObjs->def, pMdl)
+ #endif
+                            );
+         }

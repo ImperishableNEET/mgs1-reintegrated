@@ -46,7 +46,7 @@ See the preserved upstream license scopes and THIRD_PARTY.md.
 Fresh isolated repository configure/build passed (1,230 build steps, Windows i686, modern renderer). Executable --version passed. Reused the existing local Clang20/SDK toolchain and Python environment; a pristine-machine setup/install has not been tested. No additional gameplay claim was needed for this repository migration. Build SHA-256: `786aa92bce3188efcf37eee7faa04b470baf55f8c5a6741d04ef2705a5cc516b`.
 
 
-## Branded player candidate � 2026-10-12
+## Branded player candidate — 2026-10-12
 
 Version 0.2.0-reintegrated.1; built from d5d277d0aa42. Engine SHA-256:
 `39efd859d8ff2d11f96c6a072d8991abe6616d1cd5f3d66a3588b856e88f1636`.
@@ -371,3 +371,72 @@ Patched candidate needs player validation; no system-stability claim.
 
 ## Candidate 0.2.0-reintegrated.3 (13 October 2026)
 User confirmed widescreen title, PSG1 scope, gas-mask surround and camera surround, and played through the beginning of the communications tower. Camera item behavior remains imperfect and is deferred to the next release. Full campaign completion is not established. Includes stable modern rendering resolution, bounded GPU submissions, interface font work, HIDEO positioning and shared sight mask coverage. Whole-PC restart root cause remains uncertain.
+
+## Disc save loading follow-up
+
+The save-loading disc-change actor now opens and closes the native virtual drive
+for the disc requested by the save. Previously only the campaign transition
+actor had these hooks, leaving Disc 2 saves waiting indefinitely for the drive
+to open. Both configured disc paths are retained, including when booting from a
+Disc 2 checkpoint. Original Start confirmation and filesystem reset remain intact.
+Synthetic Windows x86 disc tests cover forward/reverse requests, repeated polling,
+already-mounted discs and no-request close safety. The user confirmed Disc 2 save loading works in the updated candidate.
+This change is local and unpublished.
+
+## Control-room gas trap
+
+The native invulnerability exception now includes the control-room gas death
+callback outside the script's PAL/Otacon rescue interval (story 248 through 250).
+Only active gas after oxygen depletion can bypass health protection. Original
+oxygen cadence, gas-mask delay, rations and scripted rescue remain unchanged.
+The user confirmed the control-room gas fix in gameplay.
+
+## REX/Gray Fox smoke crash
+
+A matching-executable debugger replay captured an access violation in
+AN_Unknown_800D70E4: the original effect writes RGB/fade bytes into a smoke
+animation script declared const. Only the three proven runtime-mutated smoke
+script arrays are now writable; other scripts remain immutable. Animation bytes,
+RNG calls and effect timing are preserved. The user passed the REX scene and reported reaching the ending across the
+iterated Windows x86 candidates. This is not an all-routes or single-build
+campaign validation. GPU pressure is not the cause of the captured smoke fault.
+
+## FMV XA audio follow-up
+
+A bounded movie sample exposed a predictor-rounding error in the native XA
+decoder. Arithmetic right shift now matches the FFmpeg ADPCM-XA reference
+byte-for-byte for 157,248 decoded samples. No audio queue size, emulated timing
+or resampling changes are included. Listening confirmation remains pending;
+this correction does not establish the cause of every reported dropout.
+The warning timer in Liquid/escape uses original seven-segment line outlines;
+its reported over-sharp appearance remains unresolved, with no countdown change.
+
+Ending credits now stretch their completed canvas to widescreen only when the
+widescreen option is enabled. Internal credits/movie layout stays authored;
+ordinary FMV and Codec presentation are unchanged. CPU video contracts pass,
+including original-aspect mode and transitions; the user accepted the widescreen ending. Postcredits canvas proportions remain under review.
+
+
+## Ending diagnostics and disc return — 2026-10-14
+
+The New Game and Demo Selection disc prompts now issue the native virtual-tray
+open/close handshake, allowing a return from Disc 2 to Disc 1. The existing
+Start confirmation and filesystem validation remain. Synthetic reverse-disc
+checks and all three prompt source checks pass; live New Game review is pending.
+
+F2 or a fresh L3+R3 press during an active ending movie/credits actor requests
+its normal completion callback, providing a debug skip to the next authored
+segment. Holding the shortcut does not cascade through successors; outside
+ending playback, the existing controller-port shortcut remains. Synthetic
+controller/keyboard checks pass; live ending skip review is pending.
+
+Astra compared the complete credits and husky ending movie XA audio with FFmpeg:
+25,704,000 and 1,221,696 decoded samples respectively match exactly after the
+predictor correction. The user's husky recording still differs at playback;
+no additional decode, queue or resampling change is justified yet. An optional
+PSYZ_AUDIO_CAPTURE_PATH captures pre-SDL mixed output as raw s16le stereo at
+44,100 Hz, using exclusive creation and a 64 MiB cap. It is disabled by default.
+This diagnostic distinguishes mixing from host-output distortion; persistent
+buzzing remains unresolved.
+
+User confirmation: Otacon ending plays without issue; New Game successfully returns to Disc 1 after ending. Huskies video presentation accepted. Persistent audio buzz is not claimed resolved.

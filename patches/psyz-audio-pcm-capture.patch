@@ -1,0 +1,97 @@
+diff --git a/psyz/src/platform/sdl3_audio.c b/psyz/src/platform/sdl3_audio.c
+--- a/psyz/src/platform/sdl3_audio.c
++++ b/psyz/src/platform/sdl3_audio.c
+@@ -21,6 +21,62 @@
+ static PsyzAudioStats audio_stats;
+ static Uint64 last_refill_ns;
+ 
++/* Developer-only pre-SDL output diagnostic; disabled unless explicitly set. */
++#define PCM_CAPTURE_LIMIT (64u * 1024u * 1024u)
++static FILE* pcm_capture;
++static size_t pcm_capture_bytes;
++
++static void ClosePcmCapture(void) {
++    if (!pcm_capture) return;
++    if (fclose(pcm_capture) != 0)
++        WARNF("audio PCM capture could not finish writing");
++    pcm_capture = NULL;
++    INFOF("audio PCM capture closed: %zu bytes, %zu stereo frames",
++          pcm_capture_bytes, pcm_capture_bytes / 4);
++}
++
++static void OpenPcmCapture(void) {
++    const char* path = getenv("PSYZ_AUDIO_CAPTURE_PATH");
++    pcm_capture_bytes = 0;
++    if (!path || !*path) return;
++    pcm_capture = fopen(path, "wbx");
++    if (!pcm_capture) {
++        WARNF("cannot exclusively create audio PCM capture: %s", path);
++        return;
++    }
++    INFOF("audio PCM capture: %s; raw s16le, stereo, %d Hz; pre-SDL; limit %u bytes",
++          path, PSYZ_SPU_SAMPLE_RATE, PCM_CAPTURE_LIMIT);
++}
++
++static void CapturePcmSamples(const short* samples, int frames) {
++    if (!pcm_capture || frames <= 0) return;
++    unsigned char bytes[BUFFER_FRAMES * 4];
++    while (frames > 0 && pcm_capture) {
++        size_t count = (size_t)frames;
++        if (count > BUFFER_FRAMES) count = BUFFER_FRAMES;
++        size_t remaining = (PCM_CAPTURE_LIMIT - pcm_capture_bytes) / 4;
++        if (count > remaining) count = remaining;
++        for (size_t i = 0; i < count * 2; ++i) {
++            unsigned short value = (unsigned short)samples[i];
++            bytes[i * 2] = (unsigned char)value;
++            bytes[i * 2 + 1] = (unsigned char)(value >> 8);
++        }
++        size_t written = fwrite(bytes, 1, count * 4, pcm_capture);
++        pcm_capture_bytes += written;
++        if (written != count * 4) {
++            WARNF("audio PCM capture write failed; capture disabled");
++            ClosePcmCapture();
++            return;
++        }
++        samples += count * 2;
++        frames -= (int)count;
++        if (pcm_capture_bytes == PCM_CAPTURE_LIMIT) {
++            INFOF("audio PCM capture reached its byte limit");
++            ClosePcmCapture();
++        }
++    }
++}
++
+ static void ObserveRefill(int queued) {
+     Uint64 now = SDL_GetTicksNS();
+     double gap_us = last_refill_ns ? (now - last_refill_ns) / 1000.0 : 0;
+@@ -105,6 +161,7 @@
+         abort();
+     }
+     ObserveRefill(queued);
++    CapturePcmSamples(buffer, frames);
+     if (!SDL_PutAudioStreamData(sdl_stream, buffer,
+                                frames * N_CHANNELS * SAMPLE_SIZE)) {
+         ERRORF("cannot queue generated audio: %s", SDL_GetError());
+@@ -175,6 +232,7 @@
+     SDL_LockMutex(mutex);
+     Psyz_SpuPullSamplesServiced(buffer, frames, service_tasks);
+     SDL_UnlockMutex(mutex);
++    CapturePcmSamples(buffer, frames);
+     if (!SDL_PutAudioStreamData(sdl_stream, buffer,
+                                frames * N_CHANNELS * SAMPLE_SIZE)) {
+         ERRORF("cannot queue generated audio: %s", SDL_GetError());
+@@ -228,12 +286,14 @@
+         WARNF("failed to resume audio device: %s", SDL_GetError());
+     }
+ 
++    OpenPcmCapture();
+     is_audio_init = true;
+     DEBUGF("audio initialized");
+     return 0;
+ }
+ 
+ void Psyz_AudioDestroy(void) {
++    ClosePcmCapture();
+     if (sdl_stream) {
+         SDL_DestroyAudioStream(sdl_stream);
+         sdl_stream = NULL;

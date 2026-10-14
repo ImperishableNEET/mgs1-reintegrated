@@ -244,13 +244,21 @@ static void CheckOriginalOutput(void)
 static void CheckMenuStages(const u_long *marker)
 {
     const char *stages[] = {"init", "init_ve", "init_tux", "title", "option",
-        "preope", "change", "abst", "brf", "rank", "roll", "camera",
+        "preope", "change", "abst", "brf", "rank", "camera",
         "demosel", "sound", "select", "select1", "select2", "select3", "select4", "selectd"};
     for (unsigned index = 0; index < sizeof(stages) / sizeof(stages[0]); ++index) {
         MgsVideoStage(stages[index]);
         Expect(PRESENT, 4, 3, 224, 0);
         CheckOriginalCanvas(marker);
     }
+    MgsVideoStage("roll");
+    Expect(PRESENT, 2560, 1440, 224, 0);
+    /* Stretch only presentation: credits/backdrop retain authored coordinates. */
+    CheckOriginalCanvas(marker);
+    MgsVideoDisplayFrame(0);
+    assert(checked == event_count);
+    MgsVideoStage("rank");
+    Expect(PRESENT, 4, 3, 224, 0);
     MgsVideoCodec(1);
     assert(checked == event_count);
     MgsVideoStage("s00a");

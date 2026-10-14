@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$BuildDirectory,
-    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?$')][string]$Version = '0.2.0-reintegrated.1',
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?$')][string]$Version,
     [string]$OutputDirectory = 'build/packages',
     [Parameter(Mandatory)][string]$FontDirectory
 )
@@ -10,6 +10,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 $build = [IO.Path]::GetFullPath($BuildDirectory, $project)
+if (-not $Version) {
+    $versionMatch = Select-String -LiteralPath (Join-Path $build 'CMakeCache.txt') -Pattern '^MGS_RELEASE_VERSION:STRING=([0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?)$' | Select-Object -First 1
+    if (-not $versionMatch) { throw 'Cannot determine the built release version.' }
+    $Version = $versionMatch.Matches[0].Groups[1].Value
+}
 if (-not (Select-String -LiteralPath (Join-Path $build 'CMakeCache.txt') -Pattern '^CMAKE_BUILD_TYPE:STRING=RelWithDebInfo$' -Quiet)) {
     throw 'Release packaging requires a RelWithDebInfo build.'
 }

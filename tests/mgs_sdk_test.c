@@ -2,6 +2,7 @@
 #undef fprintf
 #include "game/game.h"
 #include "mgs_controller_ports.h"
+#include "mgs_ending_debug.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -181,6 +182,52 @@ static void TestPortChord(SDL_Joystick *controller)
     ReadFrame(0, frame);
 }
 
+static void TestEndingDebug(SDL_Joystick *controller)
+{
+    unsigned char frame[PSYZ_PAD_BUF_LEN];
+    int port=Psyz_PadsHostPort(0);
+    SetTestArea("ending");
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE,1);
+    PressPortKey(0);
+    assert(Psyz_PadsHostPort(0)==port);
+    assert(MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_MOVIE));
+    assert(!MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_MOVIE));
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE,0);
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE,1);
+    PressPortKey(1); /* Held F2 repeat must not skip the successor. */
+    assert(!MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_MOVIE));
+    replaying=1; PressPortKey(0);
+    assert(!MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_MOVIE)); replaying=0;
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE,0);
+    SetTestArea("roll"); MgsEndingDebugPlayback(MGS_ENDING_DEBUG_ROLL,1);
+    assert(SDL_SetJoystickVirtualButton(controller,SDL_GAMEPAD_BUTTON_LEFT_STICK,true));
+    assert(SDL_SetJoystickVirtualButton(controller,SDL_GAMEPAD_BUTTON_RIGHT_STICK,true));
+    ReadFrame(0,frame);
+    assert(Psyz_PadsHostPort(0)==port);
+    assert(MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_ROLL));
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_ROLL,0);
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_ROLL,1);
+    ReadFrame(0,frame);
+    assert(!MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_ROLL));
+    for(int button=SDL_GAMEPAD_BUTTON_LEFT_STICK;button<=SDL_GAMEPAD_BUTTON_RIGHT_STICK;++button)
+        assert(SDL_SetJoystickVirtualButton(controller,button,false));
+    ReadFrame(0,frame);
+    for(int button=SDL_GAMEPAD_BUTTON_LEFT_STICK;button<=SDL_GAMEPAD_BUTTON_RIGHT_STICK;++button)
+        assert(SDL_SetJoystickVirtualButton(controller,button,true));
+    ReadFrame(0,frame);
+    assert(MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_ROLL));
+    for(int button=SDL_GAMEPAD_BUTTON_LEFT_STICK;button<=SDL_GAMEPAD_BUTTON_RIGHT_STICK;++button)
+        assert(SDL_SetJoystickVirtualButton(controller,button,false));
+    ReadFrame(0,frame);
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_ROLL,0);
+    SetTestArea("s07b"); MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE,1);
+    PressPortKey(0);
+    assert(Psyz_PadsHostPort(0)!=port && !MgsEndingDebugTakeSkip(MGS_ENDING_DEBUG_MOVIE));
+    PressPortKey(0); assert(Psyz_PadsHostPort(0)==port);
+    MgsEndingDebugPlayback(MGS_ENDING_DEBUG_MOVIE,0);
+    SetTestArea("");
+}
+
 static void TestAnalogAxes(SDL_Joystick *controllers[2])
 {
     const Sint16 axes[][4] = {
@@ -320,6 +367,7 @@ static void TestControllers(void)
     TestModeSwitch(controllers[0]);
     TestPortSwap();
     TestPortChord(controllers[0]);
+    TestEndingDebug(controllers[0]);
     TestRumble(on_frame);
     for (int port = 0; port < 2; ++port) {
         SDL_CloseJoystick(controllers[port]);

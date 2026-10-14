@@ -513,7 +513,7 @@ int main(int argc, char **argv)
         fputs("The checkpoint requires --disc-two <Integral Disc 2.cue>.\n", stderr);
         return 2;
     }
-    if (MgsDiscConfigure(initial_disc, options.disc_two) != 0)
+    if (MgsDiscConfigurePaths(initial_disc, options.disc, options.disc_two) != 0)
     {
         fprintf(stderr, "Cannot open disc: %s\n", initial_disc);
         return 1;

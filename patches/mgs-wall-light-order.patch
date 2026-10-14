@@ -1,0 +1,46 @@
+diff --git a/source/libdg/trans.c b/source/libdg/trans.c
+--- a/source/libdg/trans.c
++++ b/source/libdg/trans.c
+@@ -505,6 +505,9 @@
+     /* Resolve once per channel; never retain a cache pointer across stage loads. */
+     const DG_DEF *office_floor = GV_GetCache(GV_CacheID(0xc762, 'k'));
+     const DG_DEF *control_room = GV_GetCache(GV_CacheID(0xcb24, 'k'));
++    const DG_DEF *wall_lights[4] = {
++        GV_GetCache(GV_CacheID(0x973d, 'k')), GV_GetCache(GV_CacheID(0x933d, 'k')),
++        GV_GetCache(GV_CacheID(0x9b3d, 'k')), GV_GetCache(GV_CacheID(0xcb01, 'k'))};
+ #endif
+ 
+     work = (SCRATCH *)getScratchAddr(0);
+@@ -554,7 +557,8 @@
+ #ifdef MGS_NATIVE
+                         , parent_packs, (objs->flag & DG_FLAG_NATIVE_ORDERED) != 0 ||
+                           MgsOfficeFloorOrdered(office_floor, objs->def, model) ||
+-                          MgsControlRoomGlowOrdered(control_room, objs->def, model)
++                          MgsControlRoomGlowOrdered(control_room, objs->def, model) ||
++                          MgsWallLightOrdered(wall_lights, objs->def, model)
+ #endif
+                         );
+         }
+diff --git a/source/takabe/libdg2.c b/source/takabe/libdg2.c
+--- a/source/takabe/libdg2.c
++++ b/source/takabe/libdg2.c
+@@ -1534,6 +1534,9 @@
+ {
+ #ifdef MGS_NATIVE
+     const DG_DEF *control_room = GV_GetCache(GV_CacheID(0xcb24, 'k'));
++    const DG_DEF *wall_lights[4] = {
++        GV_GetCache(GV_CacheID(0x973d, 'k')), GV_GetCache(GV_CacheID(0x933d, 'k')),
++        GV_GetCache(GV_CacheID(0x9b3d, 'k')), GV_GetCache(GV_CacheID(0xcb01, 'k'))};
+ #endif
+     short    *pScratchpad = (short *)getScratchAddr(0);
+     DG_OBJS **ppObjs;
+@@ -1605,7 +1608,8 @@
+             s12c_800D6020(pObj, idx
+ #ifdef MGS_NATIVE
+                            , parent_packs, (pObjs->flag & DG_FLAG_NATIVE_ORDERED) != 0 ||
+-                             MgsControlRoomGlowOrdered(control_room, pObjs->def, pMdl)
++                             MgsControlRoomGlowOrdered(control_room, pObjs->def, pMdl) ||
++                             MgsWallLightOrdered(wall_lights, pObjs->def, pMdl)
+ #endif
+                            );
+         }

@@ -1,6 +1,7 @@
 #include "mgs_native.h"
 #include "mgs_controller_ports.h"
 #include "mgs_input_movie.h"
+#include "mgs_ending_debug.h"
 #include "game/game.h"
 #include <psyz/input.h>
 #include <psyz/overlay_sdl3.h>
@@ -9,6 +10,36 @@ static PsyzOverlayEventCB_SDL3 previous_event;
 static SDL_JoystickID chord_controller;
 static unsigned mantis_deaths;
 static int death_active, shortcut_used;
+static unsigned ending_playback, ending_skip;
+
+static int EndingArea(void)
+{
+    const char *area = GM_GetArea(0);
+    return area && (!strcmp(area, "ending") || !strcmp(area, "endingr") || !strcmp(area, "roll"));
+}
+
+void MgsEndingDebugPlayback(int kind, int active)
+{
+    ending_playback &= ~(unsigned)kind;
+    ending_skip &= ~(unsigned)kind;
+    if (active && EndingArea()) ending_playback |= (unsigned)kind;
+}
+
+int MgsEndingDebugTakeSkip(int kind)
+{
+    int requested = (ending_skip & (unsigned)kind) != 0;
+    ending_skip &= ~(unsigned)kind;
+    return requested && EndingArea() && !MgsInputMovieReplaying();
+}
+
+static int RequestEndingSkip(void)
+{
+    if (!ending_playback || !EndingArea()) return 0;
+    /* One registered movie is consumed. Never carry a request into its successor. */
+    ending_skip |= ending_playback & MGS_ENDING_DEBUG_MOVIE ? MGS_ENDING_DEBUG_MOVIE : MGS_ENDING_DEBUG_ROLL;
+    puts("[debug] Skipping this ending video through its original completion callback.");
+    return 1;
+}
 
 static int PortShortcut(const SDL_Event *event)
 {
@@ -68,6 +99,8 @@ static void ControllerEvent(const SDL_Event *event)
         previous_event(event);
     if (MgsInputMovieReplaying() || !PortShortcut(event))
         return;
+    if (RequestEndingSkip())
+        return;
     shortcut_used = 1;
     int swapped = !Psyz_PadsHostPort(0);
     Psyz_PadsSetHostPortSwap(swapped);
@@ -79,6 +112,7 @@ void MgsControllerPortsInit(void)
 {
     Psyz_PadsSetHostPortSwap(0);
     chord_controller = 0;
+    ending_playback = ending_skip = 0;
     mantis_deaths = 0;
     death_active = shortcut_used = 0;
     SDL_SetHint("REI_CONTROLLER_IDENTITY_PORTS", "0");

@@ -46,6 +46,11 @@ static int ending_mode;
 static int completed_load_mode, escape_route_mode;
 static int rex_mode, liquid_mode, garage_route_mode, garage_escape_mode;
 static int disc_change_mode;
+static int wolf_controls_mode;
+static const char *wolf_control_file;
+static unsigned wolf_control_sequence, wolf_control_frames;
+static unsigned short wolf_control_buttons;
+static int wolf_control_x, wolf_control_y;
 static int bonus_mode, bonus_verified, bonus_step, bonus_state;
 static unsigned bonus_frames, bonus_ticks;
 static int bonus_last_tick, bonus_model_flags;
@@ -113,11 +118,20 @@ int MgsProbeInit(const char *mode)
                   strcmp(mode, "intro") != 0 && strcmp(mode, "ending") != 0 && strcmp(mode, "bonus") != 0 &&
                   strcmp(mode, "completed-load") != 0 && strcmp(mode, "escape-route") != 0 &&
                   strcmp(mode, "rex-fight") != 0 && strcmp(mode, "liquid-fight") != 0 &&
-                  strcmp(mode, "garage-route") != 0 && strcmp(mode, "garage-escape") != 0)) {
-        fprintf(stderr, "[probe] Supported modes are dock, new-game, intro, dock-route, new-game-route, save-menu, load-menu, stage, disc-change, escape, briefing, ending, completed-load, escape-route, rex-fight, liquid-fight, garage-route, garage-escape, and bonus.\n");
+                  strcmp(mode, "garage-route") != 0 && strcmp(mode, "garage-escape") != 0 &&
+                  strcmp(mode, "wolf-controls") != 0)) {
+        fprintf(stderr, "[probe] Supported modes are dock, new-game, intro, dock-route, new-game-route, save-menu, load-menu, stage, disc-change, escape, briefing, ending, completed-load, escape-route, rex-fight, liquid-fight, garage-route, garage-escape, wolf-controls, and bonus.\n");
         return 0;
     }
     escape_mode = strcmp(mode, "escape") == 0;
+    wolf_controls_mode = strcmp(mode, "wolf-controls") == 0;
+    if (wolf_controls_mode) {
+        wolf_control_file = getenv("REI_PROBE_CONTROL_FILE");
+        if (!wolf_control_file || !*wolf_control_file) {
+            fputs("[probe] wolf-controls requires REI_PROBE_CONTROL_FILE.\n", stderr);
+            return 0;
+        }
+    }
     bonus_mode = strcmp(mode, "bonus") == 0;
     if (bonus_mode && !MgsBonusItemsEnabled()) {
         fputs("[probe] The bonus probe requires --bonus-items 1.\n", stderr);
@@ -146,7 +160,7 @@ int MgsProbeInit(const char *mode)
     {
         MgsProbeDockRouteInit(new_game_mode);
     }
-    if (dock_route_mode || rex_mode || liquid_mode || garage_route_mode || garage_escape_mode)
+    if (dock_route_mode || rex_mode || liquid_mode || garage_route_mode || garage_escape_mode || wolf_controls_mode)
         Psyz_PadsSetKind(0, 0, PSYZ_CTRL_ANALOG_PAD);
     if (controller || !ConfigureInput()) {
         fprintf(stderr, "[probe] Cannot initialize virtual input: %s\n", SDL_GetError());
@@ -726,12 +740,62 @@ static int AdvanceBriefing(void)
     return SetButtons(0, -1);
 }
 
+/* Explicit diagnostic input only: sequence, duration in VSyncs, hexadecimal
+ * PS1 buttons, signed left-stick x/y. Zero-duration commands cancel a hold.
+ * Replacing the private command file cannot retrigger an old sequence. */
+static int AdvanceWolfControls(void)
+{
+    int valid = 0;
+    FILE *file = fopen(wolf_control_file, "r");
+    if (file) {
+        unsigned sequence, duration, buttons;
+        int x, y;
+        valid = fscanf(file, "%u %u %x %d %d", &sequence, &duration, &buttons, &x, &y) == 5 &&
+            duration <= 600 && buttons <= 0xffff &&
+            x >= -32767 && x <= 32767 && y >= -32767 && y <= 32767;
+        if (valid && sequence > wolf_control_sequence) {
+            wolf_control_sequence = sequence;
+            wolf_control_frames = duration;
+            wolf_control_buttons = (unsigned short)buttons;
+            wolf_control_x = x;
+            wolf_control_y = y;
+            printf("[wolf-controls] command=%u frames=%u buttons=%04x axis=%d,%d frame=%u\n",
+                   sequence, duration, buttons, x, y, frame);
+        }
+        fclose(file);
+    }
+    if (!valid) wolf_control_frames = 0;
+    int held = wolf_control_frames != 0;
+    if (held) --wolf_control_frames;
+    if (!SetButtons(held ? wolf_control_buttons : 0, -1) ||
+        !SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFTX, held ? wolf_control_x : 0) ||
+        !SDL_SetJoystickVirtualAxis(controller, SDL_GAMEPAD_AXIS_LEFTY, held ? wolf_control_y : 0))
+        return 0;
+    if (frame % 15 == 0) {
+        const SnaInitWork *snake = sna_800ABBA0;
+        printf("[wolf-controls] frame=%u tick=%d stage=%s weapon=%d item=%d zoom=%d first=%d "
+               "camera=(%d,%d,%d) rotate=%d,%d snake_rotate=%d,%d player=%08x pause=%x "
+               "stance=%d action_state=%d turn=%d,%d pad=%04x position=%d,%d,%d\n",
+               frame, GV_Time, GM_GetArea(0), GM_Weapon, GM_Item, GM_Camera.zoom, GM_Camera.first_person,
+               GM_SnakeCamera.position.vx, GM_SnakeCamera.position.vy, GM_SnakeCamera.position.vz,
+               GM_Camera.rotate.vx, GM_Camera.rotate.vy, GM_SnakeCamera.rotate.vx, GM_SnakeCamera.rotate.vy,
+               GM_PlayerStatus, GV_PauseLevel, snake ? snake->field_A26_stance : -1,
+               snake ? snake->field_A3A : -1, snake ? snake->control.turn.vx : 0,
+               snake ? snake->control.turn.vy : 0, GM_CurrentPadData ? GM_CurrentPadData[0].status : 0,
+               GM_PlayerPosition.vx, GM_PlayerPosition.vy, GM_PlayerPosition.vz);
+        fflush(stdout);
+    }
+    return 1;
+}
+
 int MgsProbeVSync(void)
 {
     if (!controller) {
         return 1;
     }
     ++frame;
+    if (wolf_controls_mode)
+        return AdvanceWolfControls();
     if (garage_escape_mode) {
         int heading = -1, direction = -1;
         unsigned short buttons = MgsGarageRouteInput(frame, PlayerControlsReady(), &heading);
@@ -772,6 +836,10 @@ int MgsProbeVSync(void)
 
 int MgsProbeFinish(void)
 {
+    if (wolf_controls_mode) {
+        puts("[wolf-controls] Diagnostic input ended; no gameplay-completion assertion.");
+        return 1;
+    }
     if (garage_escape_mode) {
         int garage_complete = MgsGarageRouteFinish();
         int escape_complete = MgsEscapeRouteFinish();

@@ -127,6 +127,25 @@ int main(void)
     MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'A', 0x1234);
     MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], '*', 0x1234);
     assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[0], NULL, NULL));
+    /* A hole before a live packet must not turn replacement into duplication.
+     * The conservative scan range resets only when the queue is fully drained. */
+    for (int i = 0; i < 8; ++i)
+        MgsHiResFontRegisterInterfaceGlyph(&interface_packets[i], 'A' + i, 0x1200 + i);
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[1], NULL, NULL) == 'B');
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[7], NULL, NULL) == 'H');
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[6], 'Z', 0x5678);
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[8], '9', 0xabcd);
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[6], &captured_fore, &captured_uv_clut) == 'Z');
+    assert(captured_fore == 0x001f && captured_uv_clut == 0x5678);
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[6], NULL, NULL));
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[5], '*', 0x1234);
+    assert(!MgsHiResFontTakeInterfaceGlyph(&interface_packets[5], NULL, NULL));
+    for (int i = 4; i >= 0; --i)
+        if (i != 1)
+            assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[i], NULL, NULL) == (unsigned)('A' + i));
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[8], NULL, NULL) == '9');
+    MgsHiResFontRegisterInterfaceGlyph(&interface_packets[1024], 'Q', 0xffff);
+    assert(MgsHiResFontTakeInterfaceGlyph(&interface_packets[1024], NULL, NULL) == 'Q');
     interface_palette[2] = 0x03e0; /* multiple nonblack indices unsupported */
     MgsHiResFontSetInterfacePalette(interface_palette);
     MgsHiResFontRegisterInterfaceGlyph(&interface_packets[0], 'A', 0x1234);

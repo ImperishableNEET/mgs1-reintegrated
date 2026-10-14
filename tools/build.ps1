@@ -6,7 +6,7 @@ param(
     [string]$RendererModule,
     [string]$BuildDirectory,
     [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?$')]
-    [string]$Version = '0.2.0-reintegrated.1',
+    [string]$Version,
     [switch]$ConfigureOnly,
     [ValidateRange(1, 128)]
     [int]$Parallel = [Environment]::ProcessorCount
@@ -15,6 +15,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path $PSScriptRoot -Parent
+if (-not $Version) {
+    $versionMatch = Select-String -LiteralPath (Join-Path $projectDirectory 'CMakeLists.txt') -Pattern '^set\(MGS_RELEASE_VERSION "([0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.]+)?)"' | Select-Object -First 1
+    if (-not $versionMatch) { throw 'Cannot determine the project release version.' }
+    $Version = $versionMatch.Matches[0].Groups[1].Value
+}
 $python = Join-Path $projectDirectory '.venv/Scripts/python.exe'
 $sources = Get-Content -LiteralPath (Join-Path $projectDirectory 'sources.lock.json') -Raw | ConvertFrom-Json
 $missingSources = @($sources.repositories | Where-Object {
